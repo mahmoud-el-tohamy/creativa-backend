@@ -35,10 +35,31 @@ if (process.env.NODE_ENV === "development") {
   app.use(morgan("combined"));
 }
 
-// Rate limiting
+// Trust proxy so we get the real client IP on Vercel
+app.set("trust proxy", 1);
+
+// Rate limiting (User-based if logged in, IP-based otherwise)
+import jwt from "jsonwebtoken";
+
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per `window` (here, per 15 minutes)
+  max: 60, // Limit each user/IP to 60 requests per 15 minutes
+  keyGenerator: (req) => {
+    // Attempt to extract userId from cookies for user-based rate limiting
+    const token = req.cookies?.accessToken || req.cookies?.refreshToken;
+    if (token) {
+      try {
+        const decoded = jwt.decode(token) as any;
+        if (decoded && decoded.userId) {
+          return decoded.userId;
+        }
+      } catch (e) {
+        // Ignore decode errors, fallback to IP
+      }
+    }
+    // Fallback to IP address if not logged in
+    return req.ip || req.socket.remoteAddress || "unknown";
+  },
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
   message: { success: false, message: "تم تجاوز الحد المسموح به من الطلبات، يرجى المحاولة لاحقاً" },
