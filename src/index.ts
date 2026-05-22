@@ -68,30 +68,31 @@ const PORT = process.env.PORT || 5000;
 
 let server: any;
 
-// Connect to database and start server
-const startServer = async () => {
-  await connectDB();
+// Connect to database
+// Mongoose buffers queries, so it's safe to call this without awaiting before the first request
+connectDB().catch((err) => console.error("MongoDB connection error:", err));
+
+// Only start the Express server if NOT running in Vercel Serverless environment
+if (process.env.VERCEL !== "1") {
   server = app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT} in ${process.env.NODE_ENV} mode`);
   });
-};
 
-startServer();
-
-// Graceful shutdown
-const shutdown = () => {
-  console.log("Graceful shutdown initiated...");
-  if (server) {
-    server.close(() => {
-      console.log("HTTP server closed.");
+  // Graceful shutdown
+  const shutdown = () => {
+    console.log("Graceful shutdown initiated...");
+    if (server) {
+      server.close(() => {
+        console.log("HTTP server closed.");
+        process.exit(0);
+      });
+    } else {
       process.exit(0);
-    });
-  } else {
-    process.exit(0);
-  }
-};
+    }
+  };
 
-process.on("SIGTERM", shutdown);
-process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+}
 
 export default app;
