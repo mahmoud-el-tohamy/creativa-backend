@@ -35,7 +35,7 @@ export const list = async (req: Request, res: Response, next: NextFunction): Pro
     else if (sort === "name") sortObj = { name: 1 };
 
     const pageNum = parseInt(page as string, 10) || 1;
-    const limitNum = Math.min(parseInt(limit as string, 10) || 50, 200);
+    const limitNum = Math.min(parseInt(limit as string, 10) || 50, 5000);
     const skip = (pageNum - 1) * limitNum;
 
     const [data, total] = await Promise.all([
@@ -105,11 +105,18 @@ export const bulkAdd = async (req: Request, res: Response, next: NextFunction): 
 
     const toInsert = entries
       .filter((e: any) => !existingIds.has(e.nationalId))
-      .map((e: any) => ({
-        ...e,
-        addedBy: req.user?.id,
-        addedByName: req.user?.displayName,
-      }));
+      .map((e: any) => {
+        const addedAt = new Date();
+        const expiresAt = new Date(addedAt);
+        expiresAt.setMonth(expiresAt.getMonth() + 4);
+        return {
+          ...e,
+          addedBy: req.user?.id,
+          addedByName: req.user?.displayName,
+          addedAt,
+          expiresAt,
+        };
+      });
 
     if (toInsert.length > 0) {
       await BlacklistEntry.insertMany(toInsert);

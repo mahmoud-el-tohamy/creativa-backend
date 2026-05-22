@@ -69,14 +69,14 @@ export const login = async (req: Request, res: Response, next: NextFunction): Pr
     res.cookie("accessToken", accessToken, {
       httpOnly: true,
       secure: isProd,
-      sameSite: "strict",
+      sameSite: (isProd ? "none" : "lax") as "none" | "lax",
       maxAge: 15 * 60 * 1000, // 15 mins
     });
 
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: isProd,
-      sameSite: "strict",
+      sameSite: (isProd ? "none" : "lax") as "none" | "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
@@ -157,7 +157,7 @@ export const refresh = async (req: Request, res: Response, next: NextFunction): 
     res.cookie("accessToken", accessToken, {
       httpOnly: true,
       secure: isProd,
-      sameSite: "strict",
+      sameSite: (isProd ? "none" : "lax") as "none" | "lax",
       maxAge: 15 * 60 * 1000,
     });
 
