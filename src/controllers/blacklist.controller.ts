@@ -58,6 +58,17 @@ export const list = async (req: Request, res: Response, next: NextFunction): Pro
   }
 };
 
+export const getIds = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const entries = await BlacklistEntry.find({}).select("nationalId");
+    const ids = entries.map(e => e.nationalId);
+    res.status(200).json(ids);
+  } catch (error) {
+    next(error);
+  }
+};
+
+
 export const addSingle = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { name, nationalId, notes, trackName = "إضافة يدوية" } = req.body;

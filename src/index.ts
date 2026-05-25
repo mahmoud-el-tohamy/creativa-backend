@@ -58,8 +58,9 @@ const limiter = rateLimit({
         // Ignore decode errors, fallback to IP
       }
     }
-    // Fallback to IP address if not logged in
-    return req.ip || req.socket.remoteAddress || "unknown";
+    // Fallback to IP address if not logged in. Replace colons to avoid IPv6 validation error in express-rate-limit.
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    return ip.replace(/:/g, "-");
   },
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
@@ -72,6 +73,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/blacklist", blacklistRoutes);
 app.use("/api/audit", auditRoutes);
+app.use("/api/tracks", tracksRoutes);
 
 // Health check
 app.get("/health", (req: Request, res: Response) => {

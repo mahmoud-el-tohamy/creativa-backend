@@ -28,6 +28,7 @@ const bulkEntrySchema = Joi.object({
 
 // All roles
 router.get("/", BlacklistController.list);
+router.get("/ids", BlacklistController.getIds);
 router.get("/check", BlacklistController.check);
 
 // Admin & Employee only
