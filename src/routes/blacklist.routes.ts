@@ -21,9 +21,12 @@ const singleEntrySchema = Joi.object({
 });
 
 const bulkEntrySchema = Joi.object({
-  entries: Joi.array().items(singleEntrySchema).min(1).required().messages({
-    "array.min": "يجب إرسال سجل واحد على الأقل",
-  })
+  absentees: Joi.array().items(singleEntrySchema).optional(),
+  attendeesNationalIds: Joi.array().items(Joi.string().pattern(/^[23]\d{13}$/)).optional(),
+  trackName: Joi.string().required().messages({
+    "string.empty": "التراك مطلوب",
+  }),
+  entries: Joi.array().items(singleEntrySchema).optional(), // For backward compatibility
 });
 
 // All roles
