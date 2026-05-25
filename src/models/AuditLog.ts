@@ -10,6 +10,7 @@ export interface IAuditLog extends Document {
     | "user_create" 
     | "user_deactivate"
     | "user_activate"
+    | "user_delete"
     | "user_role_change" 
     | "attendance_upload" 
     | "filter_run" 
@@ -43,7 +44,7 @@ const auditLogSchema = new Schema<IAuditLog>(
   }
 );
 
-auditLogSchema.index({ timestamp: -1 });
+auditLogSchema.index({ timestamp: -1 }, { expireAfterSeconds: 5184000 }); // Expire after ~2 months (60 days)
 auditLogSchema.index({ performedBy: 1 });
 auditLogSchema.index({ action: 1 });
 

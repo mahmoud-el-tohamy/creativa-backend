@@ -41,5 +41,6 @@ router.post("/", validate(createUserSchema), UsersController.createUser);
 router.patch("/:id/role", validate(changeRoleSchema), UsersController.changeRole);
 router.patch("/:id/active", UsersController.toggleActive);
 router.delete("/:id", UsersController.toggleActive); // Treat DELETE as soft delete (toggle active)
+router.delete("/:id/hard", UsersController.hardDeleteUser);
 
 export default router;

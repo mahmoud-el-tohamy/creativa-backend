@@ -40,7 +40,7 @@ const blacklistEntrySchema = new Schema<IBlacklistEntry, IBlacklistEntryModel>(
 );
 
 blacklistEntrySchema.index({ nationalId: 1 }, { unique: true });
-blacklistEntrySchema.index({ expiresAt: 1 });
+blacklistEntrySchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 blacklistEntrySchema.index({ addedAt: 1 });
 
 blacklistEntrySchema.virtual("isExpired").get(function() {

@@ -162,3 +162,42 @@ export const toggleActive = async (req: Request, res: Response, next: NextFuncti
     next(error);
   }
 };
+
+export const hardDeleteUser = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    if (id === req.user?.id) {
+      res.status(403).json({ success: false, message: "لا يمكنك حذف حسابك بنفسك" });
+      return;
+    }
+
+    const targetUser = await User.findById(id);
+    if (!targetUser) {
+      res.status(404).json({ success: false, message: "المستخدم غير موجود" });
+      return;
+    }
+
+    if (targetUser.role === "admin") {
+      res.status(403).json({ success: false, message: "لا يمكنك حذف مدير آخر" });
+      return;
+    }
+
+    await User.findByIdAndDelete(id);
+
+    await AuditLog.create({
+      action: "user_delete",
+      performedBy: req.user?.id,
+      performedByName: req.user?.displayName,
+      performedByRole: req.user?.role,
+      targetId: targetUser._id.toString(),
+      targetName: targetUser.displayName,
+      details: `حذف نهائي لحساب ${targetUser.displayName}`,
+      ipAddress: req.ip || req.socket.remoteAddress || "unknown",
+    });
+
+    res.status(200).json({ success: true, message: "تم حذف المستخدم بنجاح" });
+  } catch (error) {
+    next(error);
+  }
+};

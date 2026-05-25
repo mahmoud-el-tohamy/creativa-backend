@@ -11,6 +11,8 @@ export const connectDB = async (): Promise<void> => {
     console.log(`MongoDB Connected: ${conn.connection.name}`);
   } catch (error: any) {
     console.error(`Error connecting to MongoDB: ${error.message}`);
-    process.exit(1);
+    // In serverless environments, throwing/logging is better than exiting
+    // Mongoose connection logic will naturally retry or fail on operations
+    throw error;
   }
 };
