@@ -17,7 +17,9 @@ export interface IAuditLog extends Document {
     | "certificate_generate" 
     | "sheet_organize" 
     | "login" 
-    | "logout";
+    | "logout"
+    | "track_add"
+    | "track_remove";
   performedBy: Types.ObjectId;
   performedByName: string;
   performedByRole: string;

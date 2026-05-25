@@ -12,6 +12,7 @@ import authRoutes from "./routes/auth.routes";
 import usersRoutes from "./routes/users.routes";
 import blacklistRoutes from "./routes/blacklist.routes";
 import auditRoutes from "./routes/audit.routes";
+import tracksRoutes from "./routes/tracks.routes";
 import { errorHandler } from "./middleware/errorHandler";
 
 dotenv.config();

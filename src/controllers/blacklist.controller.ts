@@ -60,20 +60,44 @@ export const list = async (req: Request, res: Response, next: NextFunction): Pro
 
 export const addSingle = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { name, nationalId, notes } = req.body;
+    const { name, nationalId, notes, trackName = "إضافة يدوية" } = req.body;
 
     const existing = await BlacklistEntry.findOne({ nationalId });
     if (existing) {
-      res.status(409).json({ success: false, message: "الرقم القومي موجود في القائمة السوداء مسبقاً" });
-      return;
+      if (existing.status === "warning") {
+        existing.absences.push({ track: trackName, date: new Date() });
+        if (existing.absences.length >= 3) {
+          existing.status = "blacklisted";
+          const addedAt = new Date();
+          existing.addedAt = addedAt;
+          const expiresAt = new Date(addedAt);
+          expiresAt.setMonth(expiresAt.getMonth() + 4);
+          existing.expiresAt = expiresAt;
+        }
+        await existing.save();
+        res.status(200).json({ success: true, data: existing, message: "تمت زيادة عدد الإنذارات بنجاح" });
+        return;
+      } else {
+        res.status(409).json({ success: false, message: "الرقم القومي موجود في القائمة السوداء مسبقاً" });
+        return;
+      }
     }
+
+    const addedAt = new Date();
+    const expiresAt = new Date(addedAt);
+    expiresAt.setMonth(expiresAt.getMonth() + 4);
 
     const entry = await BlacklistEntry.create({
       name,
       nationalId,
       notes,
+      status: "warning",
+      absences: [{ track: trackName, date: addedAt }],
+      attendedCount: 0,
       addedBy: req.user?.id,
       addedByName: req.user?.displayName,
+      addedAt,
+      expiresAt,
     });
 
     await AuditLog.create({
@@ -95,31 +119,84 @@ export const addSingle = async (req: Request, res: Response, next: NextFunction)
 
 export const bulkAdd = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { entries } = req.body;
+    const { absentees = [], attendeesNationalIds = [], trackName = "غير محدد" } = req.body;
 
-    const existingEntries = await BlacklistEntry.find({
-      nationalId: { $in: entries.map((e: any) => e.nationalId) }
-    }).select("nationalId");
-    
-    const existingIds = new Set(existingEntries.map((e) => e.nationalId));
+    // Backward compatibility if frontend still sends `entries` instead of `absentees`
+    const absenteesList = req.body.entries ? req.body.entries : absentees;
 
-    const toInsert = entries
-      .filter((e: any) => !existingIds.has(e.nationalId))
-      .map((e: any) => {
-        const addedAt = new Date();
-        const expiresAt = new Date(addedAt);
-        expiresAt.setMonth(expiresAt.getMonth() + 4);
-        return {
-          ...e,
-          addedBy: req.user?.id,
-          addedByName: req.user?.displayName,
-          addedAt,
-          expiresAt,
-        };
+    let clearedCount = 0;
+    // 1. Handle attendees (clearing warnings)
+    if (attendeesNationalIds.length > 0) {
+      const attendeesInWarning = await BlacklistEntry.find({
+        nationalId: { $in: attendeesNationalIds },
+        status: "warning"
       });
 
-    if (toInsert.length > 0) {
-      await BlacklistEntry.insertMany(toInsert);
+      for (const entry of attendeesInWarning) {
+        entry.attendedCount = (entry.attendedCount || 0) + 1;
+        if (entry.attendedCount >= 2) {
+          await entry.deleteOne();
+          clearedCount++;
+        } else {
+          await entry.save();
+        }
+      }
+    }
+
+    // 2. Handle absentees (adding warnings / blacklisting)
+    let addedCount = 0;
+    let upgradedCount = 0;
+    
+    if (absenteesList.length > 0) {
+      const absenteeIds = absenteesList.map((e: any) => e.nationalId);
+      const existingAbsentees = await BlacklistEntry.find({
+        nationalId: { $in: absenteeIds }
+      });
+      const existingMap = new Map(existingAbsentees.map(e => [e.nationalId, e]));
+
+      for (const p of absenteesList) {
+        const existing = existingMap.get(p.nationalId);
+        if (!existing) {
+          // New warning
+          const addedAt = new Date();
+          const expiresAt = new Date(addedAt);
+          expiresAt.setMonth(expiresAt.getMonth() + 4);
+          
+          await BlacklistEntry.create({
+            name: p.name,
+            nationalId: p.nationalId,
+            status: "warning",
+            absences: [{ track: trackName, date: addedAt }],
+            attendedCount: 0,
+            addedBy: req.user?.id,
+            addedByName: req.user?.displayName,
+            addedAt,
+            expiresAt,
+            notes: p.notes || ""
+          });
+          addedCount++;
+        } else {
+          // Existing record
+          if (existing.status === "warning") {
+            existing.absences.push({ track: trackName, date: new Date() });
+            if (existing.absences.length >= 3) {
+              existing.status = "blacklisted";
+              // Restart the 4 month expiration
+              const addedAt = new Date();
+              existing.addedAt = addedAt;
+              const expiresAt = new Date(addedAt);
+              expiresAt.setMonth(expiresAt.getMonth() + 4);
+              existing.expiresAt = expiresAt;
+              upgradedCount++;
+            }
+            await existing.save();
+          } else {
+            // Already blacklisted, just push absence
+            existing.absences.push({ track: trackName, date: new Date() });
+            await existing.save();
+          }
+        }
+      }
     }
 
     await AuditLog.create({
@@ -127,16 +204,16 @@ export const bulkAdd = async (req: Request, res: Response, next: NextFunction): 
       performedBy: req.user?.id,
       performedByName: req.user?.displayName,
       performedByRole: req.user?.role,
-      details: `إضافة جماعية للقائمة السوداء: تم إضافة ${toInsert.length} وتخطي ${existingIds.size}`,
-      metadata: { count: toInsert.length, skipped: existingIds.size },
+      details: `حضور وغياب: مسح ${clearedCount} إنذارات، إضافة ${addedCount} إنذارات جديدة، وتحويل ${upgradedCount} للقائمة السوداء.`,
+      metadata: { addedCount, clearedCount, upgradedCount, trackName },
       ipAddress: req.ip || req.socket.remoteAddress || "unknown",
     });
 
     res.status(201).json({
       success: true,
-      added: toInsert.length,
-      skipped: existingIds.size,
-      skippedIds: Array.from(existingIds),
+      added: addedCount,
+      cleared: clearedCount,
+      upgraded: upgradedCount,
     });
   } catch (error) {
     next(error);

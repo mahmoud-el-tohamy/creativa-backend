@@ -10,6 +10,9 @@ export interface IBlacklistEntry extends Document {
   expiresAt: Date;
   isExpired: boolean;
   notes: string;
+  status: "warning" | "blacklisted";
+  absences: { track: string; date: Date }[];
+  attendedCount: number;
 }
 
 interface IBlacklistEntryModel extends Model<IBlacklistEntry> {
@@ -32,6 +35,14 @@ const blacklistEntrySchema = new Schema<IBlacklistEntry, IBlacklistEntryModel>(
     addedByName: { type: String, required: true },
     expiresAt: { type: Date },
     notes: { type: String, default: "" },
+    status: { type: String, enum: ["warning", "blacklisted"], default: "blacklisted" },
+    absences: [
+      {
+        track: { type: String, required: true },
+        date: { type: Date, default: Date.now }
+      }
+    ],
+    attendedCount: { type: Number, default: 0 },
   },
   { 
     toJSON: { virtuals: true },

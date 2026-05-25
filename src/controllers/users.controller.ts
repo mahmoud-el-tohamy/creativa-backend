@@ -75,11 +75,6 @@ export const changeRole = async (req: Request, res: Response, next: NextFunction
       return;
     }
 
-    if (targetUser.role === "admin") {
-      res.status(403).json({ success: false, message: "لا يمكنك تغيير صلاحيات مدير آخر" });
-      return;
-    }
-
     const oldRole = targetUser.role;
     targetUser.role = role;
     await targetUser.save();
@@ -175,11 +170,6 @@ export const hardDeleteUser = async (req: Request, res: Response, next: NextFunc
     const targetUser = await User.findById(id);
     if (!targetUser) {
       res.status(404).json({ success: false, message: "المستخدم غير موجود" });
-      return;
-    }
-
-    if (targetUser.role === "admin") {
-      res.status(403).json({ success: false, message: "لا يمكنك حذف مدير آخر" });
       return;
     }
 
