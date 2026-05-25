@@ -44,7 +44,7 @@ import jwt from "jsonwebtoken";
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 60, // Limit each user/IP to 60 requests per 15 minutes
+  max: 1000, // Limit each user/IP to 1000 requests per 15 minutes
   keyGenerator: (req) => {
     // Attempt to extract userId from cookies for user-based rate limiting
     const token = req.cookies?.accessToken || req.cookies?.refreshToken;
