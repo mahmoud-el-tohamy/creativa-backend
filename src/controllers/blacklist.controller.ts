@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { BlacklistEntry } from "../models/BlacklistEntry";
 import { AuditLog } from "../models/AuditLog";
+import { DailyStat } from "../models/DailyStat";
 
 export const list = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -122,6 +123,8 @@ export const addSingle = async (req: Request, res: Response, next: NextFunction)
       ipAddress: req.ip || req.socket.remoteAddress || "unknown",
     });
 
+    await DailyStat.recordAddition(1, addedAt);
+
     res.status(201).json({ success: true, data: entry });
   } catch (error) {
     next(error);
@@ -220,6 +223,13 @@ export const bulkAdd = async (req: Request, res: Response, next: NextFunction): 
       ipAddress: req.ip || req.socket.remoteAddress || "unknown",
     });
 
+    if (addedCount > 0 || upgradedCount > 0) {
+      await DailyStat.recordAddition(addedCount + upgradedCount);
+    }
+    if (clearedCount > 0) {
+      await DailyStat.recordRemoval(clearedCount);
+    }
+
     res.status(201).json({
       success: true,
       added: addedCount,
@@ -254,6 +264,8 @@ export const remove = async (req: Request, res: Response, next: NextFunction): P
       ipAddress: req.ip || req.socket.remoteAddress || "unknown",
     });
 
+    await DailyStat.recordRemoval(1);
+
     res.status(200).json({ success: true });
   } catch (error) {
     next(error);
@@ -274,6 +286,7 @@ export const cleanup = async (req: Request, res: Response, next: NextFunction): 
         metadata: { count: deletedCount },
         ipAddress: req.ip || req.socket.remoteAddress || "unknown",
       });
+      await DailyStat.recordRemoval(deletedCount);
     }
 
     res.status(200).json({ success: true, deleted: deletedCount });
