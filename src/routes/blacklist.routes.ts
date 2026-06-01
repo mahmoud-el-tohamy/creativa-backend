@@ -18,6 +18,7 @@ const singleEntrySchema = Joi.object({
     "string.pattern.base": "الرقم القومي غير صالح"
   }),
   notes: Joi.string().optional().allow(""),
+  trackName: Joi.string().optional().allow(""),
 });
 
 const bulkEntrySchema = Joi.object({
