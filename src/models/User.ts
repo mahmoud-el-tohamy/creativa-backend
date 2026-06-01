@@ -34,7 +34,7 @@ const userSchema = new Schema<IUser, IUserModel>(
   { timestamps: true }
 );
 
-userSchema.index({ email: 1 }, { unique: true });
+// userSchema.index({ email: 1 }, { unique: true }); // Already defined as unique: true in schema
 userSchema.index({ role: 1 });
 userSchema.index({ isActive: 1 });
 

@@ -50,7 +50,7 @@ const blacklistEntrySchema = new Schema<IBlacklistEntry, IBlacklistEntryModel>(
   }
 );
 
-blacklistEntrySchema.index({ nationalId: 1 }, { unique: true });
+// blacklistEntrySchema.index({ nationalId: 1 }, { unique: true }); // Already defined as unique: true in schema
 blacklistEntrySchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 blacklistEntrySchema.index({ addedAt: 1 });
 
