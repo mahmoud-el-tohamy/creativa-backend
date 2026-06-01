@@ -33,6 +33,7 @@ The **Creativa Training Filter System - Backend** is a highly secure, custom Nod
 - **Enhanced Security**: Authentication is driven by secure, HttpOnly, SameSite-configured JSON Web Tokens (JWTs). Tokens are never exposed to the client's `localStorage`, nullifying XSS token theft vectors.
 - **Serverless Ready**: Built and configured to deploy seamlessly to Vercel Serverless Functions, ensuring high availability, zero-maintenance scaling, and cost efficiency.
 - **Automated Auditing**: All critical database mutations (user modifications, blacklist updates) automatically generate normalized audit logs using Mongoose lifecycle hooks and controller wrappers.
+- **High-Performance Bulk Operations**: Processes large attendance uploads utilizing optimized MongoDB `$in` queries and parallel execution to resolve N+1 performance bottlenecks.
 
 ---
 
@@ -50,6 +51,7 @@ The **Creativa Training Filter System - Backend** is a highly secure, custom Nod
 ### 🚫 Blacklist Governance
 - **Mongoose Indexing**: Enforces uniqueness on National IDs to prevent duplicate blacklist entries.
 - **TTL (Time-To-Live)**: Employs MongoDB TTL indexes to automatically prune expired blacklist entries after their 4-month lifecycle.
+- **Dynamic Tracks Module**: Fully functional Tracks API to manage available training tracks and attach them to blacklist entries.
 
 ### 📝 Audit Logging
 - **Immutable Trail**: Actions like creating users or modifying the blacklist are permanently recorded with the performer's ID, action type, and target metadata.
@@ -100,15 +102,23 @@ The backend follows a classic layered MVC-style REST architecture customized for
 │   │   ├── 📄 audit.controller.ts
 │   │   ├── 📄 auth.controller.ts
 │   │   ├── 📄 blacklist.controller.ts
+│   │   ├── 📄 tracks.controller.ts
 │   │   └── 📄 users.controller.ts
 │   ├── 📁 middleware/            # Express middlewares
 │   │   ├── 📄 auth.middleware.ts # JWT parsing and role verification
 │   │   └── 📄 errorHandler.ts    # Global error interceptor
 │   ├── 📁 models/                # Mongoose Database Schemas
-│   │   ├── 📄 Audit.ts
-│   │   ├── 📄 Blacklist.ts
+│   │   ├── 📄 AuditLog.ts
+│   │   ├── 📄 BlacklistEntry.ts
+│   │   ├── 📄 DailyStat.ts
+│   │   ├── 📄 Track.ts
 │   │   └── 📄 User.ts
 │   ├── 📁 routes/                # Express router definitions
+│   │   ├── 📄 audit.routes.ts
+│   │   ├── 📄 auth.routes.ts
+│   │   ├── 📄 blacklist.routes.ts
+│   │   ├── 📄 tracks.routes.ts
+│   │   └── 📄 users.routes.ts
 │   └── 📄 index.ts               # Express app initialization & local dev server
 ├── 📄 package.json               # Dependencies and scripts
 ├── 📄 tsconfig.json              # TypeScript compilation rules
@@ -125,8 +135,13 @@ The backend enforces data security at the endpoint level using the `authorizeRol
 | :--- | :---: | :---: | :---: |
 | `GET /api/auth/me` | ✅ | ✅ | ✅ |
 | `GET /api/blacklist` | ✅ | ✅ | ✅ |
+| `GET /api/blacklist/ids` | ✅ | ✅ | ✅ |
 | `POST /api/blacklist` | ✅ | ✅ | ❌ |
+| `POST /api/blacklist/bulk` | ✅ | ✅ | ❌ |
 | `DELETE /api/blacklist` | ✅ | ✅ | ❌ |
+| `GET /api/tracks` | ✅ | ✅ | ✅ |
+| `POST /api/tracks` | ✅ | ✅ | ❌ |
+| `DELETE /api/tracks/:id` | ✅ | ✅ | ❌ |
 | `GET /api/users` | ✅ | ❌ | ❌ |
 | `POST /api/users` | ✅ | ❌ | ❌ |
 | `PATCH /api/users/:id` | ✅ | ❌ | ❌ |
