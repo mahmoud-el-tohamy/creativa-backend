@@ -63,4 +63,30 @@ auditLogSchema.pre("save", async function() {
   }
 });
 
-export const AuditLog = mongoose.model<IAuditLog>("AuditLog", auditLogSchema);
+interface IAuditLogModel extends mongoose.Model<IAuditLog> {
+  cleanupOldLogs(): Promise<number>;
+}
+
+auditLogSchema.statics.cleanupOldLogs = async function() {
+  const twoMonthsAgo = new Date();
+  twoMonthsAgo.setDate(twoMonthsAgo.getDate() - 60);
+
+  // Delete older than 60 days
+  const timeResult = await this.deleteMany({ timestamp: { $lt: twoMonthsAgo } });
+  let deletedCount = timeResult.deletedCount || 0;
+
+  // Check if still exceeding 10000
+  const count = await this.countDocuments();
+  if (count > 10000) {
+    const logsToDelete = await this.find().sort({ timestamp: 1 }).limit(count - 10000).select("_id");
+    const idsToDelete = logsToDelete.map((log: any) => log._id);
+    if (idsToDelete.length > 0) {
+      const excessResult = await this.deleteMany({ _id: { $in: idsToDelete } });
+      deletedCount += excessResult.deletedCount || 0;
+    }
+  }
+
+  return deletedCount;
+};
+
+export const AuditLog = mongoose.model<IAuditLog, IAuditLogModel>("AuditLog", auditLogSchema);

@@ -98,6 +98,9 @@ connectDB().catch((err) => console.error("MongoDB connection error:", err));
 
 // Only start the Express server if NOT running in Vercel Serverless environment
 if (process.env.VERCEL !== "1") {
+  const { initCronJobs } = require("./services/cron.service");
+  initCronJobs();
+
   server = app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT} in ${process.env.NODE_ENV} mode`);
   });

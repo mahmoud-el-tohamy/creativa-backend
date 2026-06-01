@@ -264,15 +264,17 @@ export const cleanup = async (req: Request, res: Response, next: NextFunction): 
   try {
     const deletedCount = await BlacklistEntry.cleanupExpired();
 
-    await AuditLog.create({
-      action: "blacklist_bulk_cleanup",
-      performedBy: req.user?.id,
-      performedByName: req.user?.displayName,
-      performedByRole: req.user?.role,
-      details: `تنظيف القائمة السوداء: إزالة ${deletedCount} سجل منتهي الصلاحية`,
-      metadata: { count: deletedCount },
-      ipAddress: req.ip || req.socket.remoteAddress || "unknown",
-    });
+    if (deletedCount > 0) {
+      await AuditLog.create({
+        action: "blacklist_bulk_cleanup",
+        performedBy: req.user?.id,
+        performedByName: req.user?.displayName,
+        performedByRole: req.user?.role,
+        details: `تنظيف القائمة السوداء: إزالة ${deletedCount} سجل منتهي الصلاحية`,
+        metadata: { count: deletedCount },
+        ipAddress: req.ip || req.socket.remoteAddress || "unknown",
+      });
+    }
 
     res.status(200).json({ success: true, deleted: deletedCount });
   } catch (error) {
