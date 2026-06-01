@@ -146,14 +146,29 @@ export const bulkAdd = async (req: Request, res: Response, next: NextFunction): 
         status: "warning"
       });
 
+      const bulkOps = [];
+
       for (const entry of attendeesInWarning) {
-        entry.attendedCount = (entry.attendedCount || 0) + 1;
-        if (entry.attendedCount >= 2) {
-          await entry.deleteOne();
+        const newAttendedCount = (entry.attendedCount || 0) + 1;
+        if (newAttendedCount >= 2) {
+          bulkOps.push({
+            deleteOne: {
+              filter: { _id: entry._id }
+            }
+          });
           clearedCount++;
         } else {
-          await entry.save();
+          bulkOps.push({
+            updateOne: {
+              filter: { _id: entry._id },
+              update: { $set: { attendedCount: newAttendedCount } }
+            }
+          });
         }
+      }
+
+      if (bulkOps.length > 0) {
+        await BlacklistEntry.bulkWrite(bulkOps);
       }
     }
 
@@ -168,6 +183,8 @@ export const bulkAdd = async (req: Request, res: Response, next: NextFunction): 
       });
       const existingMap = new Map(existingAbsentees.map(e => [e.nationalId, e]));
 
+      const bulkOps = [];
+
       for (const p of absenteesList) {
         const existing = existingMap.get(p.nationalId);
         if (!existing) {
@@ -176,40 +193,74 @@ export const bulkAdd = async (req: Request, res: Response, next: NextFunction): 
           const expiresAt = new Date(addedAt);
           expiresAt.setMonth(expiresAt.getMonth() + 4);
           
-          await BlacklistEntry.create({
-            name: p.name,
-            nationalId: p.nationalId,
-            status: "warning",
-            absences: [{ track: trackName, date: addedAt }],
-            attendedCount: 0,
-            addedBy: req.user?.id,
-            addedByName: req.user?.displayName,
-            addedAt,
-            expiresAt,
-            notes: p.notes || ""
+          bulkOps.push({
+            insertOne: {
+              document: {
+                name: p.name,
+                nationalId: p.nationalId,
+                status: "warning",
+                absences: [{ track: trackName, date: addedAt }],
+                attendedCount: 0,
+                addedBy: req.user?.id,
+                addedByName: req.user?.displayName,
+                addedAt,
+                expiresAt,
+                notes: p.notes || ""
+              }
+            }
           });
           addedCount++;
         } else {
           // Existing record
           if (existing.status === "warning") {
-            existing.absences.push({ track: trackName, date: new Date() });
-            if (existing.absences.length >= 3) {
-              existing.status = "blacklisted";
-              // Restart the 4 month expiration
+            const newAbsences = [...existing.absences, { track: trackName, date: new Date() }];
+            
+            if (newAbsences.length >= 3) {
               const addedAt = new Date();
-              existing.addedAt = addedAt;
               const expiresAt = new Date(addedAt);
               expiresAt.setMonth(expiresAt.getMonth() + 4);
-              existing.expiresAt = expiresAt;
+              
+              bulkOps.push({
+                updateOne: {
+                  filter: { _id: existing._id },
+                  update: {
+                    $set: {
+                      status: "blacklisted",
+                      addedAt: addedAt,
+                      expiresAt: expiresAt,
+                      absences: newAbsences
+                    }
+                  }
+                }
+              });
               upgradedCount++;
+            } else {
+              bulkOps.push({
+                updateOne: {
+                  filter: { _id: existing._id },
+                  update: {
+                    $set: { absences: newAbsences }
+                  }
+                }
+              });
             }
-            await existing.save();
           } else {
             // Already blacklisted, just push absence
-            existing.absences.push({ track: trackName, date: new Date() });
-            await existing.save();
+            const newAbsences = [...existing.absences, { track: trackName, date: new Date() }];
+            bulkOps.push({
+              updateOne: {
+                filter: { _id: existing._id },
+                update: {
+                  $set: { absences: newAbsences }
+                }
+              }
+            });
           }
         }
+      }
+
+      if (bulkOps.length > 0) {
+        await BlacklistEntry.bulkWrite(bulkOps);
       }
     }
 
