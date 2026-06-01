@@ -19,7 +19,12 @@ export interface IAuditLog extends Document {
     | "login" 
     | "logout"
     | "track_add"
-    | "track_remove";
+    | "track_remove"
+    | "training_session_add"
+    | "training_session_update"
+    | "training_session_delete"
+    | "training_session_import"
+    | "timetable_rebuild";
   performedBy: Types.ObjectId;
   performedByName: string;
   performedByRole: string;

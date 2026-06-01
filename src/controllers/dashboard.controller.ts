@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { DailyStat } from "../models/DailyStat";
+import { BlacklistEntry } from "../models/BlacklistEntry";
 
 function getWeekNumber(d: Date) {
   const dObj = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -22,7 +23,6 @@ export const getChartStats = async (req: Request, res: Response, next: NextFunct
     
     // First, let's determine the time boundary for baseCumulative and fetch all records
     const allStats = await DailyStat.find({}).sort({ date: 1 });
-    const { BlacklistEntry } = require("../models/BlacklistEntry");
     const currentActiveTotal = await BlacklistEntry.countDocuments({});
     
     const now = new Date();

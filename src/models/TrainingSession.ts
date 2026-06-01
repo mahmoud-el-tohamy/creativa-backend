@@ -1,0 +1,161 @@
+import mongoose, { Schema, Document, Types } from "mongoose";
+
+// ─── Enums & Types ──────────────────────────────────────────────────────────
+
+export const PROGRAM_NAMES = [
+  "Career Development",
+  "Tech",
+  "Freelancing",
+  "Entrepreneurship",
+  "Awareness event",
+  "Hackathons / Competitions",
+  "Acceleration program",
+] as const;
+
+export type ProgramName = (typeof PROGRAM_NAMES)[number];
+
+export const TIMETABLE_PROGRAMS = [
+  "Entrepreneurship / Technology transfer",
+  "Awareness events",
+  "Acceleration program",
+  "Freelancing coaches",
+  "Hackathons / Competitions",
+  "Career development",
+] as const;
+
+export type TimetableProgram = (typeof TIMETABLE_PROGRAMS)[number];
+
+// ─── Pure helper functions ───────────────────────────────────────────────────
+
+/**
+ * Returns the fiscal year label for a given date.
+ * FY starts May 25 of year Y and ends May 24 of year Y+1.
+ * Example: May 25, 2025 → "FY2025-2026"; May 24, 2025 → "FY2024-2025"
+ */
+export function getFiscalYear(date: Date): string {
+  const year = date.getFullYear();
+  const month = date.getMonth(); // 0-indexed (April = 3, May = 4)
+  const day = date.getDate();
+
+  // On or after May 25 of this year → FY{year}-{year+1}
+  if (month > 4 || (month === 4 && day >= 25)) {
+    return `FY${year}-${year + 1}`;
+  }
+  // Before May 25 of this year → FY{year-1}-{year}
+  return `FY${year - 1}-${year}`;
+}
+
+/**
+ * Maps an input program name to its timetable row label.
+ * Both "Tech" and "Entrepreneurship" map to "Entrepreneurship / Technology transfer".
+ */
+export function mapProgramToTimetableRow(program: string): TimetableProgram {
+  switch (program) {
+    case "Tech":
+    case "Entrepreneurship":
+      return "Entrepreneurship / Technology transfer";
+    case "Awareness event":
+      return "Awareness events";
+    case "Acceleration program":
+      return "Acceleration program";
+    case "Freelancing":
+      return "Freelancing coaches";
+    case "Hackathons / Competitions":
+      return "Hackathons / Competitions";
+    case "Career Development":
+      return "Career development";
+    default:
+      // Fallback: should not occur if Joi validation is in place
+      return "Career development";
+  }
+}
+
+/**
+ * Computes the dayValue from the number of training hours.
+ * hours <= 4 → 0.5 (half day); hours >= 5 → 1.0 (full day)
+ */
+export function computeDayValue(hours: number): number {
+  return hours <= 4 ? 0.5 : 1.0;
+}
+
+// ─── Interface ───────────────────────────────────────────────────────────────
+
+export interface ITrainingSession extends Document {
+  _id: Types.ObjectId;
+
+  // Core fields
+  programName: ProgramName;
+  sessionName: string;
+  date: Date;
+  hours: number;
+  mode: "online" | "offline";
+  instructorId: Types.ObjectId;
+  instructorName: string;
+  attendeesCount: number;
+  type: "Training" | "Awareness Event";
+  evaluationReportUrl: string;
+  trainingReportUrl: string;
+
+  // Computed fields (set by pre-save hook)
+  dayValue: number;
+  timetableProgram: TimetableProgram;
+  fiscalYear: string;
+
+  // Audit
+  createdBy: Types.ObjectId;
+  createdByName: string;
+  updatedBy: Types.ObjectId | null;
+  updatedAt: Date;
+  createdAt: Date;
+}
+
+// ─── Schema ──────────────────────────────────────────────────────────────────
+
+const trainingSessionSchema = new Schema<ITrainingSession>(
+  {
+    programName: { type: String, enum: PROGRAM_NAMES, required: true },
+    sessionName: { type: String, required: true, trim: true },
+    date: { type: Date, required: true },
+    hours: { type: Number, required: true, min: 0.5, max: 24 },
+    mode: { type: String, enum: ["online", "offline"], required: true },
+    instructorId: { type: Schema.Types.ObjectId, ref: "Instructor", required: true },
+    instructorName: { type: String, required: true, trim: true },
+    attendeesCount: { type: Number, required: true, min: 0, default: 0 },
+    type: { type: String, enum: ["Training", "Awareness Event"], required: true },
+    evaluationReportUrl: { type: String, default: "" },
+    trainingReportUrl: { type: String, default: "" },
+
+    // Computed — auto-populated by pre-save hook
+    dayValue: { type: Number, default: 0.5 },
+    timetableProgram: { type: String, default: "Career development" },
+    fiscalYear: { type: String, default: "" },
+
+    // Audit
+    createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    createdByName: { type: String, required: true },
+    updatedBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
+  },
+  { timestamps: true }
+);
+
+// ─── Pre-save hook ───────────────────────────────────────────────────────────
+
+trainingSessionSchema.pre("save", async function () {
+  this.dayValue = computeDayValue(this.hours);
+  this.timetableProgram = mapProgramToTimetableRow(this.programName);
+  this.fiscalYear = getFiscalYear(this.date);
+});
+
+// ─── Indexes ─────────────────────────────────────────────────────────────────
+
+trainingSessionSchema.index({ date: 1 });
+trainingSessionSchema.index({ fiscalYear: 1, timetableProgram: 1 });
+trainingSessionSchema.index({ fiscalYear: 1, date: 1 });
+trainingSessionSchema.index({ programName: 1 });
+
+// ─── Model ───────────────────────────────────────────────────────────────────
+
+export const TrainingSession = mongoose.model<ITrainingSession>(
+  "TrainingSession",
+  trainingSessionSchema
+);

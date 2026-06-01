@@ -14,6 +14,7 @@ import blacklistRoutes from "./routes/blacklist.routes";
 import auditRoutes from "./routes/audit.routes";
 import tracksRoutes from "./routes/tracks.routes";
 import dashboardRoutes from "./routes/dashboard.routes";
+import hoursRoutes from "./routes/hours.routes";
 import { errorHandler } from "./middleware/errorHandler";
 
 dotenv.config();
@@ -76,6 +77,7 @@ app.use("/api/blacklist", blacklistRoutes);
 app.use("/api/audit", auditRoutes);
 app.use("/api/tracks", tracksRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/hours", hoursRoutes);
 
 // Health check
 app.get("/health", (req: Request, res: Response) => {
