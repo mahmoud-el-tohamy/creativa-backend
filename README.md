@@ -53,6 +53,11 @@ The **Creativa Training Filter System - Backend** is a highly secure, custom Nod
 - **TTL (Time-To-Live)**: Employs MongoDB TTL indexes to automatically prune expired blacklist entries after their 4-month lifecycle.
 - **Dynamic Tracks Module**: Fully functional Tracks API to manage available training tracks and attach them to blacklist entries.
 
+### ⏱️ Hours & Timetable Tracking
+- **Session Consolidation**: Centralizes training session data with integrated fiscal year calculations.
+- **Bulk Imports & Deduplication**: Fast Excel parsing pipeline utilizing Mongoose uniqueness logic to gracefully skip duplicate sessions.
+- **Timetable Generation**: Aggregates sessions into complex, color-coded fiscal year timetables with automated snapshot caching.
+
 ### 📝 Audit Logging
 - **Immutable Trail**: Actions like creating users or modifying the blacklist are permanently recorded with the performer's ID, action type, and target metadata.
 
@@ -146,6 +151,11 @@ The backend enforces data security at the endpoint level using the `authorizeRol
 | `POST /api/users` | ✅ | ❌ | ❌ |
 | `PATCH /api/users/:id` | ✅ | ❌ | ❌ |
 | `GET /api/audit` | ✅ | ❌ | ❌ |
+| `GET /api/hours/sessions` | ✅ | ✅ | ✅ |
+| `POST /api/hours/sessions` | ✅ | ✅ | ❌ |
+| `DELETE /api/hours/sessions/:id` | ✅ | ✅ | ❌ |
+| `POST /api/hours/import` | ✅ | ✅ | ❌ |
+| `GET /api/hours/timetable` | ✅ | ✅ | ✅ |
 
 ---
 

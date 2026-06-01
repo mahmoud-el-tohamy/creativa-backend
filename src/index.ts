@@ -7,6 +7,9 @@ import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import { connectDB } from "./config/database";
 
+// Initialize database connection immediately at the top level for Vercel
+connectDB().catch((err) => console.error("MongoDB connection error:", err));
+
 // Routes
 import authRoutes from "./routes/auth.routes";
 import usersRoutes from "./routes/users.routes";
@@ -95,10 +98,6 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 5000;
 
 let server: any;
-
-// Connect to database
-// Mongoose buffers queries, so it's safe to call this without awaiting before the first request
-connectDB().catch((err) => console.error("MongoDB connection error:", err));
 
 // Only start the Express server if NOT running in Vercel Serverless environment
 if (process.env.VERCEL !== "1") {
