@@ -496,18 +496,27 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
       // Normalize hours
       if (normalized.hours !== undefined && normalized.hours !== "") {
         let hrsVal = normalized.hours as any;
-        if (typeof hrsVal === "number" && hrsVal > 0 && hrsVal < 1) {
+        if (hrsVal instanceof Date) {
+          // Note: SheetJS creates Dates where the *local* time matches the Excel cell.
+          // Because Excel epoch is 1899, LMT timezone offsets (like +02:05:09) cause getUTCHours to be completely wrong!
+          // We MUST use the local getHours() and getMinutes().
+          normalized.hours = hrsVal.getHours() + hrsVal.getMinutes() / 60;
+        } else if (typeof hrsVal === "number" && hrsVal > 0 && hrsVal < 1) {
           // If Excel parsed it as a time fraction (fraction of 24h day)
           normalized.hours = hrsVal * 24;
         } else {
           const strVal = String(hrsVal).trim();
           if (strVal.includes(":")) {
-            const [h, m] = strVal.split(":");
-            const parsedH = parseInt(h, 10) || 0;
-            const parsedM = parseInt(m, 10) || 0;
-            normalized.hours = parsedH + parsedM / 60;
+            const timeMatch = strVal.match(/(\d+):(\d+)/);
+            if (timeMatch) {
+              const parsedH = parseInt(timeMatch[1], 10) || 0;
+              const parsedM = parseInt(timeMatch[2], 10) || 0;
+              normalized.hours = parsedH + parsedM / 60;
+            } else {
+              normalized.hours = parseFloat(strVal) || 0;
+            }
           } else {
-            normalized.hours = parseFloat(strVal);
+            normalized.hours = parseFloat(strVal) || 0;
           }
         }
       }

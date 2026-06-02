@@ -1,5 +1,9 @@
 import express, { Express, Request, Response, NextFunction } from "express";
 import dotenv from "dotenv";
+
+// Load env vars first before anything else
+dotenv.config();
+
 import helmet from "helmet";
 import cors from "cors";
 import morgan from "morgan";
@@ -19,8 +23,6 @@ import tracksRoutes from "./routes/tracks.routes";
 import dashboardRoutes from "./routes/dashboard.routes";
 import hoursRoutes from "./routes/hours.routes";
 import { errorHandler } from "./middleware/errorHandler";
-
-dotenv.config();
 
 const app: Express = express();
 
