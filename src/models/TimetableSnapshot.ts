@@ -106,8 +106,6 @@ const timetableSnapshotSchema = new Schema<ITimetableSnapshot>(
   { timestamps: false }
 );
 
-timetableSnapshotSchema.index({ fiscalYear: 1 }, { unique: true });
-
 // ─── Model ───────────────────────────────────────────────────────────────────
 
 export const TimetableSnapshot = mongoose.model<ITimetableSnapshot>(

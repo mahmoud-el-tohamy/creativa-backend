@@ -463,6 +463,24 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
         }
       }
 
+      // Normalize Date to strict UTC midnight (fixes Localhost vs Vercel timezone drift)
+      if (normalized.date instanceof Date) {
+        normalized.date = new Date(Date.UTC(
+          normalized.date.getFullYear(),
+          normalized.date.getMonth(),
+          normalized.date.getDate()
+        ));
+      } else if (typeof normalized.date === "string" && normalized.date.trim() !== "") {
+        const parsed = new Date(normalized.date);
+        if (!isNaN(parsed.getTime())) {
+          normalized.date = new Date(Date.UTC(
+            parsed.getFullYear(),
+            parsed.getMonth(),
+            parsed.getDate()
+          ));
+        }
+      }
+
       // Handle custom program names (e.g. Awareness event participant)
       let progName = String(normalized.programName ?? "").trim();
       if (progName.toLowerCase().includes("awareness event")) {

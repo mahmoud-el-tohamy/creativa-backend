@@ -8,7 +8,7 @@ import helmet from "helmet";
 import cors from "cors";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { connectDB } from "./config/database";
 
 // Initialize database connection immediately at the top level for Vercel
@@ -52,7 +52,7 @@ import jwt from "jsonwebtoken";
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 1000, // Limit each user/IP to 1000 requests per 15 minutes
-  keyGenerator: (req) => {
+  keyGenerator: (req, res) => {
     // Attempt to extract userId from cookies for user-based rate limiting
     const token = req.cookies?.accessToken || req.cookies?.refreshToken;
     if (token) {
@@ -67,7 +67,7 @@ const limiter = rateLimit({
     }
     // Fallback to IP address if not logged in.
     const ip = req.ip || req.socket.remoteAddress || "unknown";
-    return ip;
+    return ipKeyGenerator(ip);
   },
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
