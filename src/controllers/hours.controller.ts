@@ -705,36 +705,56 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
       });
     }
 
-    // Bulk upsert (Update existing or insert new)
+    // Bulk insert (Filter out duplicates first)
     let importedCount = 0;
     if (validRows.length > 0) {
-      const bulkOps = validRows.map((r) => {
-        const enriched = {
+      // Find existing to prevent duplicates (sessionName + date + instructorId)
+      const existingSessions = await TrainingSession.find(
+        {
+          $or: validRows.map((r) => ({
+            sessionName: r.sessionName,
+            date: new Date(r.date),
+            instructorId: new Types.ObjectId(String(r.instructorId)),
+          })),
+        },
+        { sessionName: 1, date: 1, instructorId: 1 }
+      ).lean();
+
+      const existingKeys = new Set(
+        existingSessions.map(
+          (s) =>
+            `${String(s.sessionName).trim().toLowerCase()}_${
+              new Date(s.date).toISOString().split("T")[0]
+            }_${String(s.instructorId)}`
+        )
+      );
+
+      const finalValidRows = validRows.filter((r) => {
+        const key = `${String(r.sessionName).trim().toLowerCase()}_${
+          new Date(r.date).toISOString().split("T")[0]
+        }_${String(r.instructorId)}`;
+        if (existingKeys.has(key)) {
+          errorRows.push({
+            row: -1, // -1 indicates it's a general/bulk error or we can use the data
+            data: r as unknown as Record<string, unknown>,
+            errors: ["تكرار: هذه الجلسة مضافة مسبقاً بنفس البيانات"],
+          });
+          return false;
+        }
+        return true;
+      });
+
+      if (finalValidRows.length > 0) {
+        const enriched = finalValidRows.map((r) => ({
           ...r,
           instructorId: new Types.ObjectId(String(r.instructorId)),
           dayValue: r.hours < 5 ? 0.5 : 1.0,
           timetableProgram: mapProgramToTimetableRow(r.programName),
           fiscalYear: getFiscalYear(new Date(r.date)),
-        };
+        }));
 
-        return {
-          updateOne: {
-            filter: {
-              sessionName: r.sessionName,
-              date: new Date(r.date),
-              instructorId: new Types.ObjectId(String(r.instructorId)),
-            },
-            update: { $set: enriched },
-            upsert: true,
-          },
-        };
-      });
-
-      const result = await TrainingSession.bulkWrite(bulkOps, { ordered: false });
-      importedCount = (result.upsertedCount || 0) + (result.modifiedCount || 0);
-      if (importedCount === 0 && validRows.length > 0) {
-        // If they were identical and no modification was needed
-        importedCount = validRows.length;
+        await TrainingSession.insertMany(enriched, { ordered: false });
+        importedCount = finalValidRows.length;
       }
     }
 
