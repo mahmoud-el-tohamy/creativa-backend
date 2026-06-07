@@ -434,14 +434,18 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
       instructorName: ["instructor"],
       attendeesCount: ["no. of attendees", "no. of attendants"],
       type: ["type"],
-      evaluationReportUrl: ["evaluation report url", "تقرير التقييم"],
+      evaluationReportUrl: [
+        "evaluation report url", 
+        "تقرير التقييم", 
+        "تقرير التقيم", 
+        "تقرير التقديم"
+      ],
       trainingReportUrl: [
         "training report url",
         "تقرير التدريب و الاستشارات",
         "تقرير التدريب والاستشارات",
         "لينك تقرير البرنامج التدريبي (1)",
         "لينك تقرير البرنامج التدريبي",
-        "تقرير التقديم",
       ],
     };
 
