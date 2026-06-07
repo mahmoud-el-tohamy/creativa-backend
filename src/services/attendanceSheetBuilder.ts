@@ -127,7 +127,9 @@ function buildWorkshopSheet(workshop: WorkshopGroup): XlsxStyle.WorkSheet {
     currentRow++;
 
     // DATA ROWS
-    session.trainees.forEach((trainee, ti) => {
+    const numRows = Math.max(3, session.trainees.length);
+    for (let ti = 0; ti < numRows; ti++) {
+      const trainee = session.trainees[ti];
       const style = ti % 2 === 0 ? DATA_EVEN_STYLE : DATA_ODD_STYLE;
       
       let detailsText = "";
@@ -136,20 +138,20 @@ function buildWorkshopSheet(workshop: WorkshopGroup): XlsxStyle.WorkSheet {
 
       const values = [
         detailsText,               // Details (Col A)
-        trainee.name,
-        trainee.gender,
-        trainee.age,
-        trainee.customerType,
-        trainee.mobile,
-        trainee.email,
-        trainee.faculty,
-        trainee.nationalId,
+        trainee ? trainee.name : "",
+        trainee ? trainee.gender : "",
+        trainee ? trainee.age : "",
+        trainee ? trainee.customerType : "",
+        trainee ? trainee.mobile : "",
+        trainee ? trainee.email : "",
+        trainee ? trainee.faculty : "",
+        trainee ? trainee.nationalId : "",
       ];
       values.forEach((val, ci) => {
         ws[cellAddr(currentRow, ci)] = { v: val ?? "", t: typeof val === 'number' ? 'n' : 's', s: style };
       });
       currentRow++;
-    });
+    }
 
     // BLACK SEPARATOR (between sessions, not after last)
     if (si < workshop.sessions.length - 1) {
@@ -197,7 +199,7 @@ export async function buildAttendanceSheet(fileBuffer: Buffer): Promise<{
   const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
   const rawRows = XlsxStyle.utils.sheet_to_json<Record<string, unknown>>(
     firstSheet,
-    { defval: "" }
+    { defval: "", raw: false }
   );
 
   const totalRows = rawRows.length;
