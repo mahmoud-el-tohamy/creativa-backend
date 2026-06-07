@@ -52,7 +52,16 @@ const blacklistEntrySchema = new Schema<IBlacklistEntry, IBlacklistEntryModel>(
 
 // blacklistEntrySchema.index({ nationalId: 1 }, { unique: true }); // Already defined as unique: true in schema
 blacklistEntrySchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-blacklistEntrySchema.index({ addedAt: 1 });
+blacklistEntrySchema.index({ addedAt: -1 });
+
+// PERF: Compound index for filtered list queries
+blacklistEntrySchema.index({ addedAt: -1, expiresAt: 1 });
+
+// PERF: Text search index for name + nationalId search
+blacklistEntrySchema.index(
+  { name: "text", nationalId: "text" },
+  { name: "blacklist_text_search", weights: { nationalId: 2, name: 1 } }
+);
 
 blacklistEntrySchema.virtual("isExpired").get(function() {
   if (!this.expiresAt) return false;

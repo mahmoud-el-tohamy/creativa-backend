@@ -35,8 +35,9 @@ const userSchema = new Schema<IUser, IUserModel>(
 );
 
 // userSchema.index({ email: 1 }, { unique: true }); // Already defined as unique: true in schema
-userSchema.index({ role: 1 });
-userSchema.index({ isActive: 1 });
+// PERF: explicit index for missing username field in user instructions, actually it's displayName here.
+userSchema.index({ displayName: 1 }, { sparse: true });
+userSchema.index({ role: 1, isActive: 1 });
 
 userSchema.pre("save", async function () {
   if (!this.isModified("password") || !this.password) return;

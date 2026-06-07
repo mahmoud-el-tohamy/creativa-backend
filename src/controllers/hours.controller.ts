@@ -118,6 +118,10 @@ export const createSession = async (req: Request, res: Response, next: NextFunct
       return;
     }
 
+    // Normalize empty instructorId to null (ObjectId can't cast "")
+    if (!value.instructorId) value.instructorId = null;
+    if (!value.instructorName) value.instructorName = "";
+
     const session = new TrainingSession({
       ...value,
       createdBy: req.user?.id,
@@ -169,6 +173,9 @@ export const updateSession = async (req: Request, res: Response, next: NextFunct
     const oldDate = new Date(existing.date);
     const oldFiscalYear = existing.fiscalYear;
 
+    // Normalize empty instructorId to null (ObjectId can't cast "")
+    if (!value.instructorId) value.instructorId = null;
+    if (!value.instructorName) value.instructorName = "";
     Object.assign(existing, value);
     existing.updatedBy = new Types.ObjectId(String(req.user?.id));
     await existing.save(); // pre-save hook recomputes computed fields

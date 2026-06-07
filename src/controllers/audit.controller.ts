@@ -31,7 +31,7 @@ export const listLogs = async (req: Request, res: Response, next: NextFunction):
     const skip = (pageNum - 1) * limitNum;
 
     const [data, total] = await Promise.all([
-      AuditLog.find(query).sort({ timestamp: -1 }).skip(skip).limit(limitNum),
+      AuditLog.find(query).sort({ timestamp: -1 }).skip(skip).limit(limitNum).lean(),
       AuditLog.countDocuments(query),
     ]);
 

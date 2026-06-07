@@ -53,8 +53,9 @@ const auditLogSchema = new Schema<IAuditLog>(
 );
 
 auditLogSchema.index({ timestamp: -1 }, { expireAfterSeconds: 5184000 }); // Expire after ~2 months (60 days)
-auditLogSchema.index({ performedBy: 1 });
-auditLogSchema.index({ action: 1 });
+// PERF: explicit indexes for faster filtering
+auditLogSchema.index({ action: 1, timestamp: -1 });
+auditLogSchema.index({ performedBy: 1, timestamp: -1 });
 
 auditLogSchema.pre("save", async function() {
   const Model = this.constructor as mongoose.Model<IAuditLog>;

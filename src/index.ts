@@ -27,6 +27,9 @@ import { errorHandler } from "./middleware/errorHandler";
 
 const app: Express = express();
 
+// Disable ETag so API responses always return fresh 200 (no 304 stale cache)
+app.set("etag", false);
+
 // Security and utility middleware
 app.use(helmet());
 app.use(
@@ -46,6 +49,33 @@ if (process.env.NODE_ENV === "development") {
 
 // Trust proxy so we get the real client IP on Vercel
 app.set("trust proxy", 1);
+
+import mongoose from "mongoose";
+
+// PERF: Keep-alive endpoints for external monitors
+// GET /api/ping (Placed before rate-limiter and auth to ensure fast response)
+app.get("/api/ping", (req: Request, res: Response) => {
+  res.status(200).json({
+    status: "ok",
+    timestamp: Date.now(),
+    env: process.env.NODE_ENV,
+  });
+});
+
+// GET /api/health
+app.get("/api/health", async (req: Request, res: Response) => {
+  try {
+    const state = mongoose.connection.readyState;
+    const stateMap = ["disconnected", "connected", "connecting", "disconnecting"];
+    res.status(200).json({
+      status: state === 1 ? "healthy" : "degraded",
+      db: stateMap[state] ?? "unknown",
+      uptime: process.uptime(),
+    });
+  } catch {
+    res.status(503).json({ status: "unhealthy" });
+  }
+});
 
 // Rate limiting (User-based if logged in, IP-based otherwise)
 import jwt from "jsonwebtoken";
@@ -86,10 +116,7 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/hours", hoursRoutes);
 app.use("/api/attendance-sheet", attendanceSheetRoutes);
 
-// Health check
-app.get("/health", (req: Request, res: Response) => {
-  res.status(200).json({ status: "UP", timestamp: new Date() });
-});
+
 
 // 404 Handler
 app.use((req: Request, res: Response) => {

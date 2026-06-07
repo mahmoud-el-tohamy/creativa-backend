@@ -6,7 +6,8 @@ export const listUsers = async (req: Request, res: Response, next: NextFunction)
   try {
     const users = await User.find()
       .select("-refreshTokens -password")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
     res.status(200).json({ success: true, data: users });
   } catch (error) {
     next(error);

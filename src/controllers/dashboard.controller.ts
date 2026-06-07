@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { DailyStat } from "../models/DailyStat";
 import { BlacklistEntry } from "../models/BlacklistEntry";
+import { User } from "../models/User";
 
 function getWeekNumber(d: Date) {
   const dObj = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -17,13 +18,19 @@ function getISOWeekBounds(d: Date) {
   return { monday, sunday };
 }
 
+// PERF: Consolidated endpoint that runs all MongoDB queries in parallel using Promise.all()
+// Returns the full blacklist and the calculated chart stats in a single round-trip.
 export const getChartStats = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { range = "monthly" } = req.query;
     
-    // First, let's determine the time boundary for baseCumulative and fetch all records
-    const allStats = await DailyStat.find({}).sort({ date: 1 });
-    const currentActiveTotal = await BlacklistEntry.countDocuments({});
+    // Run ALL queries IN PARALLEL
+    const [allStats, currentActiveTotal, fullBlacklist, totalUsers] = await Promise.all([
+      DailyStat.find({}).sort({ date: 1 }).lean(),
+      BlacklistEntry.countDocuments({}),
+      BlacklistEntry.find({}).sort({ addedAt: -1 }).lean(),
+      User.countDocuments({ isActive: true })
+    ]);
     
     const now = new Date();
     const buckets: { label: string; fullLabel?: string; key: string; date: Date, endDate: Date }[] = [];
@@ -96,9 +103,6 @@ export const getChartStats = async (req: Request, res: Response, next: NextFunct
     const startDate = buckets[0].date;
     startDate.setHours(0, 0, 0, 0); 
     
-    // We will calculate backwards. 
-    // Any events that happened AFTER the end of our entire chart range 
-    // need to be accounted for so we can start our backwards calculation from the last bucket accurately.
     const veryEndDate = buckets[buckets.length - 1].endDate;
     let eventsAfterChart = { additions: 0, removals: 0 };
 
@@ -111,9 +115,7 @@ export const getChartStats = async (req: Request, res: Response, next: NextFunct
         return;
       }
 
-      if (d < startDate) {
-        return; // We don't care about events before our chart starts, because we calculate backwards from the present!
-      }
+      if (d < startDate) return;
 
       let key = "";
       if (range === "daily") key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
@@ -132,12 +134,8 @@ export const getChartStats = async (req: Request, res: Response, next: NextFunct
     });
 
     const chartData = [];
-    
-    // The cumulative total at the very end of our chart range is the current total MINUS any net additions that happened after the chart ends.
     let currentCumulative = currentActiveTotal - eventsAfterChart.additions + eventsAfterChart.removals;
     
-    // We iterate backwards through the buckets to calculate each bucket's ending cumulative
-    // but we build the array backwards so we have to unshift or reverse it later.
     for (let i = buckets.length - 1; i >= 0; i--) {
       const b = buckets[i];
       const stats = countsMap.get(b.key) || { additions: 0, removals: 0 };
@@ -151,11 +149,15 @@ export const getChartStats = async (req: Request, res: Response, next: NextFunct
         rawDate: b.date
       });
       
-      // Moving one bucket backwards in time:
       currentCumulative = currentCumulative - stats.additions + stats.removals;
     }
 
-    res.status(200).json({ success: true, data: chartData });
+    res.status(200).json({ 
+      success: true, 
+      data: chartData,
+      blacklist: fullBlacklist,
+      users: { total: totalUsers }
+    });
   } catch (error) {
     next(error);
   }

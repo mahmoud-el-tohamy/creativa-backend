@@ -4,7 +4,8 @@ import { AuditLog } from "../models/AuditLog";
 
 export const getTracks = async (req: Request, res: Response) => {
   try {
-    const tracks = await Track.find().sort({ createdAt: -1 });
+    // PERF: lean() for read-only query
+    const tracks = await Track.find().sort({ createdAt: -1 }).lean();
     res.json(tracks);
   } catch (error) {
     res.status(500).json({ message: "Server error", error });

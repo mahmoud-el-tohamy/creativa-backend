@@ -1,40 +1,77 @@
 import { Request, Response, NextFunction } from "express";
+import mongoose from "mongoose";
 
-export const errorHandler = (err: any, req: Request, res: Response, next: NextFunction): void => {
-  console.error("Error Handler:", err);
+// PERF: Optimized error handler that prevents hanging on network drops
+export function errorHandler(
+  err: unknown,
+  req: Request,
+  res: Response,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _next: NextFunction
+): void {
+  console.error(`[ERROR] ${req.method} ${req.path}:`, err);
 
-  // Mongoose Duplicate Key Error
-  if (err.code === 11000) {
-    res.status(409).json({ success: false, message: "البيانات موجودة مسبقاً" });
+  // Already sent a response — can't send another
+  if (res.headersSent) return;
+
+  // Mongoose validation error
+  if (err instanceof mongoose.Error.ValidationError) {
+    res.status(400).json({
+      success: false,
+      message: "بيانات غير صالحة",
+      errors: Object.values(err.errors).map((e) => e.message),
+    });
     return;
   }
 
-  // Mongoose Validation Error
-  if (err.name === "ValidationError") {
-    const errors = Object.values(err.errors).map((val: any) => ({
-      field: val.path,
-      message: val.message,
-    }));
-    res.status(400).json({ success: false, message: "بيانات غير صالحة", errors });
+  // Mongoose duplicate key
+  if (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code: number }).code === 11000
+  ) {
+    res.status(409).json({
+      success: false,
+      message: "البيانات موجودة مسبقاً",
+    });
     return;
   }
 
-  // JWT Errors
-  if (err.name === "JsonWebTokenError") {
+  // JWT errors
+  if (err instanceof Error && err.name === "JsonWebTokenError") {
     res.status(401).json({ success: false, message: "رمز غير صالح" });
     return;
   }
-  
-  if (err.name === "TokenExpiredError") {
-    res.status(401).json({ success: false, message: "انتهت صلاحية الجلسة", code: "TOKEN_EXPIRED" });
+
+  if (err instanceof Error && err.name === "TokenExpiredError") {
+    res.status(401).json({
+      success: false,
+      message: "انتهت صلاحية الجلسة",
+      code: "TOKEN_EXPIRED",
+    });
     return;
   }
 
-  // Default Error
-  const response: Record<string, any> = { success: false, message: "حدث خطأ في السيرفر" };
-  if (process.env.NODE_ENV === "development") {
-    response.stack = err.stack;
+  // MongoDB timeout / network errors
+  if (
+    err instanceof Error &&
+    (err.message.includes("ECONNREFUSED") ||
+      err.message.includes("ETIMEDOUT") ||
+      err.message.includes("MongoNetworkError"))
+  ) {
+    res.status(503).json({
+      success: false,
+      message: "تعذّر الاتصال بقاعدة البيانات، يرجى المحاولة مرة أخرى",
+    });
+    return;
   }
 
-  res.status(500).json(response);
-};
+  // Default
+  const isDev = process.env.NODE_ENV === "development";
+  res.status(500).json({
+    success: false,
+    message: "حدث خطأ في الخادم",
+    ...(isDev && err instanceof Error ? { stack: err.stack } : {}),
+  });
+}
