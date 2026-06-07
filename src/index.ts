@@ -106,6 +106,18 @@ const limiter = rateLimit({
 });
 app.use("/api", limiter);
 
+// Middleware to ensure DB connection is ready before handling requests 
+// (Crucial for Vercel serverless where bufferCommands=false causes immediate crash if not connected)
+app.use("/api", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    console.error("MongoDB Connection Error in middleware:", error);
+    next(error);
+  }
+});
+
 // API Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
