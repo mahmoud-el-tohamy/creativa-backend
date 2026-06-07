@@ -24,7 +24,8 @@ export interface IAuditLog extends Document {
     | "training_session_update"
     | "training_session_delete"
     | "training_session_import"
-    | "timetable_rebuild";
+    | "timetable_rebuild"
+    | "attendance_sheet_build";
   performedBy: Types.ObjectId;
   performedByName: string;
   performedByRole: string;

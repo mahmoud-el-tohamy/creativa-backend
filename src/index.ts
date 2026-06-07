@@ -22,6 +22,7 @@ import auditRoutes from "./routes/audit.routes";
 import tracksRoutes from "./routes/tracks.routes";
 import dashboardRoutes from "./routes/dashboard.routes";
 import hoursRoutes from "./routes/hours.routes";
+import attendanceSheetRoutes from "./routes/attendanceSheet.routes";
 import { errorHandler } from "./middleware/errorHandler";
 
 const app: Express = express();
@@ -83,6 +84,7 @@ app.use("/api/audit", auditRoutes);
 app.use("/api/tracks", tracksRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/hours", hoursRoutes);
+app.use("/api/attendance-sheet", attendanceSheetRoutes);
 
 // Health check
 app.get("/health", (req: Request, res: Response) => {
