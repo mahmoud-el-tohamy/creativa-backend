@@ -669,6 +669,16 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
         continue;
       }
 
+      // Debug: log URLs in first valid row
+      if (validRows.length === 0) {
+        console.log("[DEBUG] First valid row URLs:", {
+          evaluationReportUrl: value.evaluationReportUrl,
+          trainingReportUrl: value.trainingReportUrl,
+          normalizedEval: normalized.evaluationReportUrl,
+          normalizedTrain: normalized.trainingReportUrl,
+        });
+      }
+
       // Resolve instructor
       const instructorLookup = instructorMap.get(String(value.instructorName ?? "").trim().toLowerCase());
       let instructorId: string;
