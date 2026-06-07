@@ -528,6 +528,21 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
 
     // Log for debugging
     console.log("Header row index:", headerRowIndex, "Headers found:", headerToColIndex);
+    
+    // Dump the raw cell for URL columns in the first data row
+    const evalColIdx = fieldColMap["evaluationReportUrl"];
+    const trainColIdx = fieldColMap["trainingReportUrl"];
+    const firstDataRowForDebug = headerRowIndex + 1;
+    if (evalColIdx >= 0) {
+      const addr = XLSX.utils.encode_cell({ r: firstDataRowForDebug, c: evalColIdx });
+      const cell = sheet[addr];
+      console.log("[DEBUG] evaluationReportUrl cell @", addr, JSON.stringify(cell));
+    }
+    if (trainColIdx >= 0) {
+      const addr = XLSX.utils.encode_cell({ r: firstDataRowForDebug, c: trainColIdx });
+      const cell = sheet[addr];
+      console.log("[DEBUG] trainingReportUrl cell @", addr, JSON.stringify(cell));
+    }
 
 
 
