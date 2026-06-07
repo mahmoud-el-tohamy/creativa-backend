@@ -823,10 +823,28 @@ export const downloadTimetable = async (req: Request, res: Response, next: NextF
 
 export const getDashboardStats = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { fiscalYear: fyQuery } = req.query;
+    const { fiscalYear: fyQuery, quarter: qQuery } = req.query;
     const fiscalYear = typeof fyQuery === "string" && fyQuery ? fyQuery : getFiscalYear(new Date());
+    const quarter = typeof qQuery === "string" ? qQuery : "all";
 
-    const baseMatch = { fiscalYear };
+    const baseMatch: Record<string, any> = {};
+    
+    if (fiscalYear !== "all") {
+      baseMatch.fiscalYear = fiscalYear;
+    }
+
+    if (quarter !== "all") {
+      const qMap: Record<string, number[]> = {
+        "Q1": [5, 6, 7],
+        "Q2": [8, 9, 10],
+        "Q3": [11, 12, 1],
+        "Q4": [2, 3, 4]
+      };
+      const allowedMonths = qMap[quarter];
+      if (allowedMonths) {
+        baseMatch.$expr = { $in: [{ $month: "$date" }, allowedMonths] };
+      }
+    }
 
     // 1. Overall stats
     const overallStats = await TrainingSession.aggregate([
