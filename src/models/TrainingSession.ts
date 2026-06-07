@@ -29,20 +29,20 @@ export type TimetableProgram = (typeof TIMETABLE_PROGRAMS)[number];
 
 /**
  * Returns the fiscal year label for a given date.
- * FY starts May 25 of year Y and ends May 24 of year Y+1.
- * Example: May 25, 2025 → "FY2025-2026"; May 24, 2025 → "FY2024-2025"
+ * FIXED: FIX 1 — FY starts May 1 of year Y and ends Apr 30 of year Y+1.
+ * Example: May 1, 2025 → "FY2025-2026"; Apr 30, 2025 → "FY2024-2025"
  */
 export function getFiscalYear(date: Date): string {
+  const month = date.getMonth(); // 0-based
   const year = date.getFullYear();
-  const month = date.getMonth(); // 0-indexed (April = 3, May = 4)
-  const day = date.getDate();
-
-  // On or after May 25 of this year → FY{year}-{year+1}
-  if (month > 4 || (month === 4 && day >= 25)) {
+  // May = month 4
+  if (month >= 4) {
+    // May 1 or later → FY{year}-{year+1}
     return `FY${year}-${year + 1}`;
+  } else {
+    // Before May → FY{year-1}-{year}
+    return `FY${year - 1}-${year}`;
   }
-  // Before May 25 of this year → FY{year-1}-{year}
-  return `FY${year - 1}-${year}`;
 }
 
 /**
@@ -50,32 +50,25 @@ export function getFiscalYear(date: Date): string {
  * Both "Tech" and "Entrepreneurship" map to "Entrepreneurship / Technology transfer".
  */
 export function mapProgramToTimetableRow(program: string): TimetableProgram {
-  switch (program) {
-    case "Tech":
-    case "Entrepreneurship":
-      return "Entrepreneurship / Technology transfer";
-    case "Awareness event":
-      return "Awareness events";
-    case "Acceleration program":
-      return "Acceleration program";
-    case "Freelancing":
-      return "Freelancing coaches";
-    case "Hackathons / Competitions":
-      return "Hackathons / Competitions";
-    case "Career Development":
-      return "Career development";
-    default:
-      // Fallback: should not occur if Joi validation is in place
-      return "Career development";
-  }
+  const map: Record<string, TimetableProgram> = {
+    "Entrepreneurship": "Entrepreneurship / Technology transfer",
+    "Tech": "Entrepreneurship / Technology transfer",
+    "Awareness event": "Awareness events",
+    "Acceleration program": "Acceleration program",
+    "Freelancing": "Freelancing coaches",
+    "Hackathons / Competitions": "Hackathons / Competitions",
+    "Career Development": "Career development",
+  };
+  return map[program] ?? "Career development";
 }
 
 /**
  * Computes the dayValue from the number of training hours.
- * hours <= 4 → 0.5 (half day); hours >= 5 → 1.0 (full day)
+ * FIXED: FIX 2 — hours < 5 → 0.5 (half day); hours >= 5 → 1.0 (full day)
+ * Examples: 4.25 → 0.5, 4.99 → 0.5, 5.0 → 1.0, 5.5 → 1.0
  */
 export function computeDayValue(hours: number): number {
-  return hours <= 4 ? 0.5 : 1.0;
+  return hours < 5 ? 0.5 : 1.0; // FIXED: FIX 2 — was `hours <= 4`
 }
 
 // ─── Interface ───────────────────────────────────────────────────────────────
@@ -89,10 +82,10 @@ export interface ITrainingSession extends Document {
   date: Date;
   hours: number;
   mode: "online" | "offline";
-  instructorId: Types.ObjectId;
-  instructorName: string;
+  instructorId: Types.ObjectId | null; // FIXED: FIX 3 — optional
+  instructorName: string; // FIXED: FIX 3 — optional (empty string when no instructor)
   attendeesCount: number;
-  type: "Training" | "Awareness Event";
+  type: "Training" | "Awareness Event" | "Incubation" | "Consultation";
   evaluationReportUrl: string;
   trainingReportUrl: string;
 
@@ -118,10 +111,10 @@ const trainingSessionSchema = new Schema<ITrainingSession>(
     date: { type: Date, required: true },
     hours: { type: Number, required: true, min: 0.5, max: 24 },
     mode: { type: String, enum: ["online", "offline"], required: true },
-    instructorId: { type: Schema.Types.ObjectId, ref: "Instructor", required: true },
-    instructorName: { type: String, required: true, trim: true },
+    instructorId: { type: Schema.Types.ObjectId, ref: "Instructor", required: false, default: null }, // FIXED: FIX 3
+    instructorName: { type: String, required: false, default: "", trim: true }, // FIXED: FIX 3
     attendeesCount: { type: Number, required: true, min: 0, default: 0 },
-    type: { type: String, enum: ["Training", "Awareness Event"], required: true },
+    type: { type: String, enum: ["Training", "Awareness Event", "Incubation", "Consultation"], required: true },
     evaluationReportUrl: { type: String, default: "" },
     trainingReportUrl: { type: String, default: "" },
 

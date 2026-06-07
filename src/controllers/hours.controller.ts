@@ -36,16 +36,18 @@ const sessionSchema = Joi.object({
     "any.required": "عدد الساعات مطلوب",
   }),
   mode: Joi.string().valid("online", "offline").required().messages({ "any.only": "نمط التدريب يجب أن يكون online أو offline" }),
-  instructorId: Joi.string().required().messages({ "any.required": "معرف المدرب مطلوب" }),
-  instructorName: Joi.string().trim().required().messages({ "any.required": "اسم المدرب مطلوب" }),
+  // FIXED: FIX 3 — instructor is now optional
+  instructorId: Joi.string().optional().allow("", null).messages({}),
+  instructorName: Joi.string().trim().optional().allow("", null).messages({}),
   attendeesCount: Joi.number().integer().min(0).default(0),
-  type: Joi.string().valid("Training", "Awareness Event").required().messages({ "any.only": "نوع الجلسة غير صالح" }),
-  evaluationReportUrl: Joi.string().uri().allow("").default(""),
-  trainingReportUrl: Joi.string().uri().allow("").default(""),
+  type: Joi.string().valid("Training", "Awareness Event", "Incubation", "Consultation").required().messages({ "any.only": "نوع الجلسة غير صالح" }),
+  // FIXED: FIX 4 — both URL fields explicitly present and optional
+  evaluationReportUrl: Joi.string().uri().optional().allow("", null).default(""),
+  trainingReportUrl: Joi.string().uri().optional().allow("", null).default(""),
 });
 
 const importSessionSchema = sessionSchema.keys({
-  instructorId: Joi.string().optional().allow(""), // Will be auto-generated during import
+  instructorId: Joi.string().optional().allow("", null), // Will be auto-generated during import
 });
 
 // ─── LIST SESSIONS ────────────────────────────────────────────────────────────
@@ -415,24 +417,107 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
       return;
     }
 
-    const workbook = XLSX.read(req.file.buffer, { type: "buffer", cellDates: true });
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer", cellDates: true, cellHTML: false });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
-    const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
 
-    // Column mapping (field -> possible headers)
+    // ── Step 1: Find the header row by scanning the first 5 rows ────────────
+    const sheetRange = XLSX.utils.decode_range(sheet["!ref"] || "A1:A1");
+    
+    // All possible column aliases (flat list, lower-cased, for header detection)
     const COLUMN_ALIASES: Record<string, string[]> = {
-      programName: ["Program Name", "Program"],
-      sessionName: ["Session Name", "Session"],
-      date: ["Date"],
-      hours: ["No. of Hrs", "No. of Hrs.", "hours", "No. of hours"],
-      mode: ["Online/Offline", "Online/Offlin"],
-      instructorName: ["Instructor"],
-      attendeesCount: ["No. of Attendees", "No. of attendants"],
-      type: ["Type"],
-      evaluationReportUrl: ["Evaluation Report URL", "تقرير التقييم"],
-      trainingReportUrl: ["Training Report URL", "تقرير التدريب و الاستشارات", "تقرير التدريب والاستشارات"],
+      programName: ["program name", "program"],
+      sessionName: ["session name", "session"],
+      date: ["date"],
+      hours: ["no. of hrs", "no. of hrs.", "hours", "no. of hours"],
+      mode: ["online/offline", "online/offlin"],
+      instructorName: ["instructor"],
+      attendeesCount: ["no. of attendees", "no. of attendants"],
+      type: ["type"],
+      evaluationReportUrl: ["evaluation report url", "تقرير التقييم"],
+      trainingReportUrl: [
+        "training report url",
+        "تقرير التدريب و الاستشارات",
+        "تقرير التدريب والاستشارات",
+        "لينك تقرير البرنامج التدريبي (1)",
+        "لينك تقرير البرنامج التدريبي",
+        "تقرير التقديم",
+      ],
     };
+
+    const allAliasesFlat = new Set(Object.values(COLUMN_ALIASES).flat().map(a => a.trim().toLowerCase()));
+
+    // Scan up to first 5 rows to find which row has the most matching aliases
+    let headerRowIndex = -1;
+    let bestMatchCount = 0;
+    for (let r = sheetRange.s.r; r <= Math.min(sheetRange.s.r + 4, sheetRange.e.r); r++) {
+      let matchCount = 0;
+      for (let c = sheetRange.s.c; c <= sheetRange.e.c; c++) {
+        const cell = sheet[XLSX.utils.encode_cell({ r, c })];
+        if (cell && cell.v && allAliasesFlat.has(String(cell.v).trim().toLowerCase())) {
+          matchCount++;
+        }
+      }
+      if (matchCount > bestMatchCount) {
+        bestMatchCount = matchCount;
+        headerRowIndex = r;
+      }
+    }
+
+    if (headerRowIndex === -1) {
+      res.status(400).json({ success: false, message: "لا يمكن إيجاد صف العناوين في الملف" });
+      return;
+    }
+
+    // ── Step 2: Build column map from header row ─────────────────────────────
+    // Maps lowercased header text → column index (0-based)
+    const headerToColIndex: Record<string, number> = {};
+    for (let c = sheetRange.s.c; c <= sheetRange.e.c; c++) {
+      const cell = sheet[XLSX.utils.encode_cell({ r: headerRowIndex, c })];
+      if (cell && cell.v) {
+        headerToColIndex[String(cell.v).trim().toLowerCase()] = c;
+      }
+    }
+
+    // ── Step 3: Helper to get cell address from field for a given data row ───
+    const getFieldColIndex = (field: string): number => {
+      for (const alias of COLUMN_ALIASES[field] || []) {
+        const idx = headerToColIndex[alias.trim().toLowerCase()];
+        if (idx !== undefined) return idx;
+      }
+      return -1;
+    };
+
+    // ── Step 4: Helper to get value from a cell, preferring hyperlink target for URL fields
+    const getCellValue = (rowIdx: number, colIdx: number, isUrlField: boolean): unknown => {
+      if (colIdx < 0) return "";
+      const addr = XLSX.utils.encode_cell({ r: rowIdx, c: colIdx });
+      const cell = sheet[addr];
+      if (!cell) return "";
+
+      // For URL fields: prefer the hyperlink target, then the cell value
+      if (isUrlField && cell.l && cell.l.Target) {
+        return cell.l.Target;
+      }
+
+      return cell.v ?? "";
+    };
+
+    // ── Step 5: Pre-compute column indices for each field ───────────────────
+    const fieldColMap: Record<string, number> = {};
+    for (const field of Object.keys(COLUMN_ALIASES)) {
+      fieldColMap[field] = getFieldColIndex(field);
+    }
+
+    const urlFields = new Set(["evaluationReportUrl", "trainingReportUrl"]);
+
+    // ── Step 6: Parse data rows ──────────────────────────────────────────────
+    const firstDataRow = headerRowIndex + 1;
+
+    // Log for debugging
+    console.log("Header row index:", headerRowIndex, "Headers found:", headerToColIndex);
+
+
 
     // Pre-load instructors to resolve name → id
     const instructors = await Instructor.find({ isActive: true }).lean();
@@ -442,23 +527,39 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
     const errorRows: ErrorRow[] = [];
     const affectedFiscalYears = new Set<string>();
 
-    for (let i = 0; i < rawRows.length; i++) {
-      const raw = rawRows[i];
-      const rowNum = i + 2; // 1-indexed + header
 
-      // Skip completely empty rows
-      if (Object.keys(raw).length === 0 || Object.values(raw).every(v => v === "" || v === undefined || v === null)) {
-        continue;
+    for (let rowIdx = firstDataRow; rowIdx <= sheetRange.e.r; rowIdx++) {
+      const rowNum = rowIdx + 1; // 1-based for display
+
+      // Build normalized from direct cell access
+      const normalized: Record<string, unknown> = {};
+      let hasAnyValue = false;
+      for (const field of Object.keys(COLUMN_ALIASES)) {
+        const colIdx = fieldColMap[field];
+        const isUrlField = urlFields.has(field);
+        const val = getCellValue(rowIdx, colIdx, isUrlField);
+        normalized[field] = val;
+        if (val !== "" && val !== undefined && val !== null) hasAnyValue = true;
       }
 
-      // Normalize to field names
-      const normalized: Record<string, unknown> = {};
-      for (const [field, aliases] of Object.entries(COLUMN_ALIASES)) {
-        normalized[field] = "";
-        for (const alias of aliases) {
-          if (raw[alias] !== undefined && raw[alias] !== "") {
-            normalized[field] = raw[alias];
-            break;
+      // Skip completely empty rows
+      if (!hasAnyValue) continue;
+
+      // Also check if the cell value looks like a URL itself (some sheets put the URL directly in the cell)
+      // For URL fields, if the value is a string starting with http, keep it; otherwise clear it
+      for (const field of ["evaluationReportUrl", "trainingReportUrl"]) {
+        const val = String(normalized[field] ?? "").trim();
+        if (val && !val.startsWith("http")) {
+          // It's not a valid URL, try to see if there's a hyperlink on this cell that overrides it
+          const colIdx = fieldColMap[field];
+          if (colIdx >= 0) {
+            const addr = XLSX.utils.encode_cell({ r: rowIdx, c: colIdx });
+            const cell = sheet[addr];
+            if (cell && cell.l && cell.l.Target) {
+              normalized[field] = cell.l.Target;
+            } else {
+              normalized[field] = ""; // Not a valid URL, discard
+            }
           }
         }
       }
@@ -583,48 +684,36 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
       });
     }
 
-    // Bulk insert (Filter out duplicates first)
+    // Bulk upsert (Update existing or insert new)
     let importedCount = 0;
     if (validRows.length > 0) {
-      // Find existing to prevent duplicates (sessionName + date + instructorId)
-      const existingSessions = await TrainingSession.find(
-        {
-          $or: validRows.map(r => ({
-            sessionName: r.sessionName,
-            date: new Date(r.date),
-            instructorId: new Types.ObjectId(String(r.instructorId))
-          }))
-        },
-        { sessionName: 1, date: 1, instructorId: 1 }
-      ).lean();
-
-      const existingKeys = new Set(
-        existingSessions.map(s => `${String(s.sessionName).trim().toLowerCase()}_${new Date(s.date).toISOString().split('T')[0]}_${String(s.instructorId)}`)
-      );
-
-      const finalValidRows = validRows.filter(r => {
-        const key = `${String(r.sessionName).trim().toLowerCase()}_${new Date(r.date).toISOString().split('T')[0]}_${String(r.instructorId)}`;
-        if (existingKeys.has(key)) {
-          errorRows.push({
-            row: -1, // We don't have original row number here easily, but -1 indicates it's a general/bulk error or we can use the data
-            data: r as unknown as Record<string, unknown>,
-            errors: ["تكرار: هذه الجلسة مضافة مسبقاً بنفس البيانات"]
-          });
-          return false;
-        }
-        return true;
-      });
-
-      if (finalValidRows.length > 0) {
-        const enriched = finalValidRows.map((r) => ({
+      const bulkOps = validRows.map((r) => {
+        const enriched = {
           ...r,
-          dayValue: r.hours <= 4 ? 0.5 : 1.0,
+          instructorId: new Types.ObjectId(String(r.instructorId)),
+          dayValue: r.hours < 5 ? 0.5 : 1.0,
           timetableProgram: mapProgramToTimetableRow(r.programName),
           fiscalYear: getFiscalYear(new Date(r.date)),
-        }));
+        };
 
-        await TrainingSession.insertMany(enriched, { ordered: false });
-        importedCount = finalValidRows.length;
+        return {
+          updateOne: {
+            filter: {
+              sessionName: r.sessionName,
+              date: new Date(r.date),
+              instructorId: new Types.ObjectId(String(r.instructorId)),
+            },
+            update: { $set: enriched },
+            upsert: true,
+          },
+        };
+      });
+
+      const result = await TrainingSession.bulkWrite(bulkOps, { ordered: false });
+      importedCount = (result.upsertedCount || 0) + (result.modifiedCount || 0);
+      if (importedCount === 0 && validRows.length > 0) {
+        // If they were identical and no modification was needed
+        importedCount = validRows.length;
       }
     }
 

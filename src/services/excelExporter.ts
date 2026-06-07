@@ -161,7 +161,7 @@ export async function exportHoursTracking(fiscalYear: string): Promise<Buffer> {
 
     if (s.evaluationReportUrl) {
       ws[cellAddr(r, 8)] = {
-        v: "فتح الرابط",
+        v: s.evaluationReportUrl,
         t: "s",
         l: { Target: s.evaluationReportUrl },
         s: { ...baseStyle, font: { color: { rgb: "0563C1" }, underline: true } },
@@ -172,7 +172,7 @@ export async function exportHoursTracking(fiscalYear: string): Promise<Buffer> {
 
     if (s.trainingReportUrl) {
       ws[cellAddr(r, 9)] = {
-        v: "فتح الرابط",
+        v: s.trainingReportUrl,
         t: "s",
         l: { Target: s.trainingReportUrl },
         s: { ...baseStyle, font: { color: { rgb: "0563C1" }, underline: true } },
@@ -343,7 +343,8 @@ export async function exportTimetable(fiscalYear: string): Promise<Buffer> {
     };
     ws["!merges"].push({
       s: { r: currentRow, c: 0 },
-      e: { r: currentRow + 7, c: 0 }
+      // FIXED: FIX 5 — span = 1 header row + 1 week row + N program rows = N+1
+      e: { r: currentRow + TIMETABLE_PROGRAMS.length + 1, c: 0 }
     });
 
     const headerFill = MONTH_HEADER_COLORS[mIdx % 12];
@@ -473,13 +474,15 @@ export async function exportTimetable(fiscalYear: string): Promise<Buffer> {
     }
 
     const subRow = currentRow;
+    // FIXED: FIX 5 — use TIMETABLE_PROGRAMS.length instead of hardcoded 5 (now 8 rows)
+    const progCount = TIMETABLE_PROGRAMS.length;
     for (let d = 1; d <= 31; d++) {
       const colIndex = 1 + d;
       const isValid = d <= monthData.daysInMonth;
       if (isValid) {
         ws[cellAddr(subRow, colIndex)] = {
           t: "n",
-          f: `SUM(${colLetter(colIndex)}${subRow - 5}:${colLetter(colIndex)}${subRow})`,
+          f: `SUM(${colLetter(colIndex)}${subRow - progCount + 1}:${colLetter(colIndex)}${subRow})`,
           s: {
             font: { bold: true, sz: 8 },
             fill: { fgColor: { rgb: "E2EFDA" } },
@@ -493,12 +496,12 @@ export async function exportTimetable(fiscalYear: string): Promise<Buffer> {
     
     ws[cellAddr(subRow, 33)] = {
       t: "n",
-      f: `SUM(AH${subRow - 5}:AH${subRow})`,
+      f: `SUM(AH${subRow - progCount + 1}:AH${subRow})`,
       s: { font: { bold: true }, fill: { fgColor: { rgb: "C6EFCE" } }, alignment: { horizontal: "right" } }
     };
     ws[cellAddr(subRow, 34)] = {
       t: "n",
-      f: `SUM(AH${subRow - 5}:AH${subRow})`,
+      f: `SUM(AH${subRow - progCount + 1}:AH${subRow})`,
       s: { font: { bold: true }, fill: { fgColor: { rgb: "C6EFCE" } }, alignment: { horizontal: "center" } }
     };
     ws["!rows"][currentRow] = { hpx: 14 };
@@ -629,7 +632,8 @@ export async function exportTimetable(fiscalYear: string): Promise<Buffer> {
     v: "Total Days", t: "s",
     s: { font: { bold: true }, border: { top: { style: "double", color: { rgb: "000000" } } }, alignment: { vertical: "center" } }
   };
-  const eCells = Array.from({ length: 6 }, (_, i) => cellAddr(summaryStartRow + 1 + i, 4));
+  // FIXED: FIX 5 — use TIMETABLE_PROGRAMS.length instead of hardcoded 6
+  const eCells = Array.from({ length: TIMETABLE_PROGRAMS.length }, (_, i) => cellAddr(summaryStartRow + 1 + i, 4));
   ws[cellAddr(grandTotalRow, 4)] = {
     t: "n", f: `SUM(${eCells.join(",")})`,
     s: { font: { bold: true }, border: { top: { style: "double", color: { rgb: "000000" } } }, alignment: { horizontal: "center", vertical: "center" } }
@@ -647,7 +651,7 @@ export async function exportTimetable(fiscalYear: string): Promise<Buffer> {
     s: { font: { bold: true }, border: { top: { style: "double", color: { rgb: "000000" } } } }
   };
   for (let c = 8; c <= 11; c++) {
-    const qCells = Array.from({ length: 6 }, (_, i) => cellAddr(summaryStartRow + 1 + i, c));
+    const qCells = Array.from({ length: TIMETABLE_PROGRAMS.length }, (_, i) => cellAddr(summaryStartRow + 1 + i, c));
     ws[cellAddr(grandTotalRow, c)] = {
       t: "n", f: `SUM(${qCells.join(",")})`,
       s: { font: { bold: true }, border: { top: { style: "double", color: { rgb: "000000" } } }, alignment: { horizontal: "center", vertical: "center" } }
