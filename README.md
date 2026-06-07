@@ -25,11 +25,11 @@ An enterprise-grade RESTful API backend for **Creativa Innovation Hub - Mansoura
 
 ## 🚀 Overview
 
-The **Creativa Training Filter System - Backend** is a highly secure, custom Node.js and Express API built to replace legacy Firebase infrastructure. It manages all data persistence, user sessions via HttpOnly cookies, and strict role-based access to ensure operational data integrity.
+The **Creativa Training Filter System - Backend** is a highly secure, custom Node.js and Express API. It manages all data persistence, user sessions via HttpOnly cookies, and strict role-based access to ensure operational data integrity.
 
 ### Key Value Propositions
 
-- **Total Data Ownership**: Migrated completely from Firebase to a self-hosted or managed MongoDB instance, providing total control over database schemas, indexing, and backups.
+- **Total Data Ownership**: Uses a self-hosted or managed MongoDB instance, providing total control over database schemas, indexing, and backups.
 - **Enhanced Security**: Authentication is driven by secure, HttpOnly, SameSite-configured JSON Web Tokens (JWTs). Tokens are never exposed to the client's `localStorage`, nullifying XSS token theft vectors.
 - **Serverless Ready**: Built and configured to deploy seamlessly to Vercel Serverless Functions, ensuring high availability, zero-maintenance scaling, and cost efficiency.
 - **Automated Auditing**: All critical database mutations (user modifications, blacklist updates) automatically generate normalized audit logs using Mongoose lifecycle hooks and controller wrappers.
@@ -57,6 +57,10 @@ The **Creativa Training Filter System - Backend** is a highly secure, custom Nod
 - **Session Consolidation**: Centralizes training session data with integrated fiscal year calculations.
 - **Bulk Imports & Deduplication**: Fast Excel parsing pipeline utilizing Mongoose uniqueness logic to gracefully skip duplicate sessions.
 - **Timetable Generation**: Aggregates sessions into complex, color-coded fiscal year timetables with automated snapshot caching.
+
+### 🧾 Attendance Sheet Organizer
+- **Excel Formatting Engine**: Uses `xlsx-js-style` to programmatically parse raw Google Forms data and reconstruct it into an advanced, multi-sheet Excel workbook.
+- **Intelligent Grouping**: Automatically groups trainees by Workshop Name and Date, inserts customized yellow session headers, and separates sessions with thick black rows.
 
 ### 📝 Audit Logging
 - **Immutable Trail**: Actions like creating users or modifying the blacklist are permanently recorded with the performer's ID, action type, and target metadata.
@@ -138,7 +142,11 @@ The backend enforces data security at the endpoint level using the `authorizeRol
 
 | API Endpoint | Admin | Employee | Viewer |
 | :--- | :---: | :---: | :---: |
+| `POST /api/auth/login` | ✅ | ✅ | ✅ |
+| `POST /api/auth/logout` | ✅ | ✅ | ✅ |
+| `POST /api/auth/refresh` | ✅ | ✅ | ✅ |
 | `GET /api/auth/me` | ✅ | ✅ | ✅ |
+| `GET /api/dashboard/stats` | ✅ | ✅ | ✅ |
 | `GET /api/blacklist` | ✅ | ✅ | ✅ |
 | `GET /api/blacklist/ids` | ✅ | ✅ | ✅ |
 | `POST /api/blacklist` | ✅ | ✅ | ❌ |
@@ -156,6 +164,10 @@ The backend enforces data security at the endpoint level using the `authorizeRol
 | `DELETE /api/hours/sessions/:id` | ✅ | ✅ | ❌ |
 | `POST /api/hours/import` | ✅ | ✅ | ❌ |
 | `GET /api/hours/timetable` | ✅ | ✅ | ✅ |
+| `GET /api/hours/timetable/:fiscalYear` | ✅ | ✅ | ✅ |
+| `GET /api/hours/instructors` | ✅ | ✅ | ✅ |
+| `DELETE /api/hours/sessions/bulk` | ✅ | ✅ | ❌ |
+| `POST /api/attendance-sheet/build` | ✅ | ✅ | ❌ |
 
 ---
 
