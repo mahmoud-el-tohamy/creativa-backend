@@ -12,6 +12,7 @@ import {
 import { Instructor } from "../models/Instructor";
 import { TimetableSnapshot } from "../models/TimetableSnapshot";
 import { AuditLog } from "../models/AuditLog";
+import { BlacklistEntry } from "../models/BlacklistEntry";
 import { rebuildTimetableSnapshot, rebuildAfterSessionChange } from "../services/timetableBuilder";
 import { exportHoursTracking, exportTimetable } from "../services/excelExporter";
 
@@ -813,6 +814,221 @@ export const downloadTimetable = async (req: Request, res: Response, next: NextF
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename="Timetable_${fy}.xlsx"`);
     res.status(200).send(buf);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── DASHBOARD STATS ─────────────────────────────────────────────────────────
+
+export const getDashboardStats = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { fiscalYear: fyQuery } = req.query;
+    const fiscalYear = typeof fyQuery === "string" && fyQuery ? fyQuery : getFiscalYear(new Date());
+
+    const baseMatch = { fiscalYear };
+
+    // 1. Overall stats
+    const overallStats = await TrainingSession.aggregate([
+      { $match: baseMatch },
+      {
+        $group: {
+          _id: null,
+          totalTrainingDays: { $sum: "$dayValue" },
+          totalSessions: { $sum: 1 },
+          totalAttendees: { $sum: "$attendeesCount" },
+          totalHours: { $sum: "$hours" },
+        },
+      },
+    ]);
+
+    const stats = overallStats[0] || {
+      totalTrainingDays: 0,
+      totalSessions: 0,
+      totalAttendees: 0,
+      totalHours: 0,
+    };
+
+    // 2. Program Performance
+    const programDaysRaw = await TrainingSession.aggregate([
+      { $match: baseMatch },
+      {
+        $group: {
+          _id: "$timetableProgram",
+          totalDays: { $sum: "$dayValue" },
+          sessionCount: { $sum: 1 },
+          attendeesCount: { $sum: "$attendeesCount" },
+          totalHours: { $sum: "$hours" },
+        },
+      },
+      { $sort: { totalDays: -1 } },
+    ]);
+    const programDays = programDaysRaw.map((p) => ({
+      program: String(p._id),
+      totalDays: p.totalDays,
+      sessionCount: p.sessionCount,
+      attendeesCount: p.attendeesCount,
+      totalHours: p.totalHours,
+    }));
+
+    // 3. Monthly Activity
+    const monthlyActivityRaw = await TrainingSession.aggregate([
+      { $match: baseMatch },
+      {
+        $group: {
+          _id: {
+            year: { $year: "$date" },
+            month: { $month: "$date" },
+          },
+          sessions: { $sum: 1 },
+          days: { $sum: "$dayValue" },
+          attendees: { $sum: "$attendeesCount" },
+          hours: { $sum: "$hours" },
+        },
+      },
+      { $sort: { "_id.year": 1, "_id.month": 1 } },
+    ]);
+
+    const monthNamesArabic = [
+      "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
+      "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"
+    ];
+
+    const monthlyActivity = monthlyActivityRaw.map((m) => ({
+      month: `${monthNamesArabic[m._id.month - 1]} ${m._id.year}`,
+      monthIndex: m._id.year * 100 + m._id.month,
+      sessions: m.sessions,
+      days: m.days,
+      attendees: m.attendees,
+      hours: m.hours,
+    }));
+    
+    // Daily Activity (for time range control frontend calculation)
+    const dailyActivityRaw = await TrainingSession.aggregate([
+      { $match: baseMatch },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
+          sessions: { $sum: 1 },
+          days: { $sum: "$dayValue" },
+          attendees: { $sum: "$attendeesCount" },
+          hours: { $sum: "$hours" },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+    const dailyActivity = dailyActivityRaw.map((d) => ({
+      date: String(d._id),
+      sessions: d.sessions,
+      days: d.days,
+      attendees: d.attendees,
+      hours: d.hours,
+    }));
+
+    // 4. Mode Breakdown
+    const modeRaw = await TrainingSession.aggregate([
+      { $match: baseMatch },
+      {
+        $group: {
+          _id: "$mode",
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+    let online = 0, offline = 0;
+    modeRaw.forEach((m) => {
+      if (m._id === "online") online = m.count;
+      if (m._id === "offline") offline = m.count;
+    });
+    const totalMode = online + offline;
+    const modeBreakdown = {
+      online,
+      offline,
+      onlinePct: totalMode ? Number(((online / totalMode) * 100).toFixed(1)) : 0,
+      offlinePct: totalMode ? Number(((offline / totalMode) * 100).toFixed(1)) : 0,
+    };
+
+    // 5. Top Instructors
+    const topInstructorsRaw = await TrainingSession.aggregate([
+      { $match: { ...baseMatch, instructorName: { $ne: "" }, instructorId: { $ne: null } } },
+      {
+        $group: {
+          _id: "$instructorName",
+          sessions: { $sum: 1 },
+          totalHours: { $sum: "$hours" },
+          totalAttendees: { $sum: "$attendeesCount" },
+        },
+      },
+      { $sort: { sessions: -1 } },
+      { $limit: 5 },
+    ]);
+    const topInstructors = topInstructorsRaw.map((t) => ({
+      name: String(t._id),
+      sessions: t.sessions,
+      totalHours: t.totalHours,
+      totalAttendees: t.totalAttendees,
+    }));
+
+    // 6. Type Breakdown
+    const typeRaw = await TrainingSession.aggregate([
+      { $match: baseMatch },
+      {
+        $group: {
+          _id: "$type",
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { count: -1 } }
+    ]);
+    const totalTypes = typeRaw.reduce((sum, t) => sum + t.count, 0);
+    const typeBreakdown = typeRaw.map((t) => ({
+      type: String(t._id),
+      count: t.count,
+      pct: totalTypes ? Number(((t.count / totalTypes) * 100).toFixed(1)) : 0,
+    }));
+
+    // 7. Warning Stats
+    const totalWarnings = await BlacklistEntry.countDocuments({ status: "warning" });
+    
+    const warning1 = await BlacklistEntry.countDocuments({ 
+      status: "warning", 
+      $expr: { $eq: [{ $size: "$absences" }, 1] } 
+    });
+    
+    const warning2 = await BlacklistEntry.countDocuments({ 
+      status: "warning", 
+      $expr: { $gte: [{ $size: "$absences" }, 2] } 
+    });
+
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+    const startOfMonth = new Date(currentYear, currentMonth, 1);
+    
+    const blacklistedThisMonth = await BlacklistEntry.countDocuments({
+      status: "blacklisted",
+      addedAt: { $gte: startOfMonth }
+    });
+
+    const warningStats = {
+      total: totalWarnings,
+      warning1,
+      warning2,
+      blacklistedThisMonth,
+      clearedThisMonth: 0, // Placeholder
+    };
+
+    res.status(200).json({
+      fiscalYear,
+      ...stats,
+      programDays,
+      monthlyActivity,
+      dailyActivity,
+      modeBreakdown,
+      topInstructors,
+      typeBreakdown,
+      warningStats,
+      attendanceRate: [],
+    });
   } catch (error) {
     next(error);
   }

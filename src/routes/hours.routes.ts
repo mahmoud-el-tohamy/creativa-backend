@@ -17,6 +17,7 @@ import {
   downloadHoursTracking,
   downloadTimetable,
   bulkDeleteSessions,
+  getDashboardStats,
 } from "../controllers/hours.controller";
 
 const router = Router();
@@ -40,6 +41,9 @@ const upload = multer({
 
 // All routes require authentication
 router.use(authenticate);
+
+// ─── Dashboard Stats ──────────────────────────────────────────────────────────
+router.get("/dashboard-stats", getDashboardStats);
 
 // ─── Training Sessions ────────────────────────────────────────────────────────
 router.get("/sessions", listSessions);
