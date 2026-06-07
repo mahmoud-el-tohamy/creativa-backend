@@ -417,7 +417,7 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
       return;
     }
 
-    const workbook = XLSX.read(req.file.buffer, { type: "buffer", cellDates: true, cellHTML: false });
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer", cellDates: true, cellHTML: false, cellFormula: true });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
 
@@ -495,9 +495,21 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
       const cell = sheet[addr];
       if (!cell) return "";
 
-      // For URL fields: prefer the hyperlink target, then the cell value
-      if (isUrlField && cell.l && cell.l.Target) {
-        return cell.l.Target;
+      if (isUrlField) {
+        // 1. Relationship-based hyperlink (standard .xlsx links)
+        if (cell.l && cell.l.Target) {
+          return cell.l.Target;
+        }
+        // 2. Formula-based hyperlink: =HYPERLINK("url","display text") — common in Google Sheets exports
+        if (cell.f) {
+          const match = String(cell.f).match(/HYPERLINK\s*\(\s*"([^"]+)"/i);
+          if (match) return match[1];
+        }
+        // 3. Cell value is already a direct URL
+        const directVal = String(cell.v ?? "").trim();
+        if (directVal.startsWith("http")) return directVal;
+        // None of the above — not a valid URL
+        return "";
       }
 
       return cell.v ?? "";
@@ -545,24 +557,8 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
       // Skip completely empty rows
       if (!hasAnyValue) continue;
 
-      // Also check if the cell value looks like a URL itself (some sheets put the URL directly in the cell)
-      // For URL fields, if the value is a string starting with http, keep it; otherwise clear it
-      for (const field of ["evaluationReportUrl", "trainingReportUrl"]) {
-        const val = String(normalized[field] ?? "").trim();
-        if (val && !val.startsWith("http")) {
-          // It's not a valid URL, try to see if there's a hyperlink on this cell that overrides it
-          const colIdx = fieldColMap[field];
-          if (colIdx >= 0) {
-            const addr = XLSX.utils.encode_cell({ r: rowIdx, c: colIdx });
-            const cell = sheet[addr];
-            if (cell && cell.l && cell.l.Target) {
-              normalized[field] = cell.l.Target;
-            } else {
-              normalized[field] = ""; // Not a valid URL, discard
-            }
-          }
-        }
-      }
+      // getCellValue already handles all URL extraction (cell.l, HYPERLINK formula, direct URL)
+      // Nothing to do here — all URL fields are already correctly set above
 
       // Normalize Date to strict UTC midnight (fixes Localhost vs Vercel timezone drift)
       if (normalized.date instanceof Date) {
