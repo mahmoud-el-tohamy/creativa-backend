@@ -100,26 +100,18 @@ function buildWorkshopSheet(workshop: WorkshopGroup): XlsxStyle.WorkSheet {
     const session = workshop.sessions[si];
 
     // SESSION HEADER ROW
-    // Col A: Workshop Name
+    // Cols A-I: empty with session header style, but we put Workshop Name in Col A and Date in Col B
     ws[cellAddr(currentRow, 0)] = {
       v: session.workshopName || "غير محدد",
       t: 's',
       s: SESSION_HEADER_STYLE,
     };
-    // Col B: Date
     ws[cellAddr(currentRow, 1)] = {
       v: session.dateDisplay,
       t: 's',
       s: SESSION_HEADER_STYLE,
     };
-    // Col C: Instructor (blank, gray fill hint)
-    ws[cellAddr(currentRow, 2)] = {
-      v: "",
-      t: 's',
-      s: INSTRUCTOR_CELL_STYLE,
-    };
-    // Cols D-I: empty with session header style
-    for (let c = 3; c <= 8; c++) {
+    for (let c = 2; c <= 8; c++) {
       ws[cellAddr(currentRow, c)] = { v: "", t: 's', s: SESSION_HEADER_STYLE };
     }
     currentRow++;
@@ -137,8 +129,13 @@ function buildWorkshopSheet(workshop: WorkshopGroup): XlsxStyle.WorkSheet {
     // DATA ROWS
     session.trainees.forEach((trainee, ti) => {
       const style = ti % 2 === 0 ? DATA_EVEN_STYLE : DATA_ODD_STYLE;
+      
+      let detailsText = "";
+      if (ti === 0) detailsText = session.workshopName || "غير محدد";
+      else if (ti === 1) detailsText = session.dateDisplay;
+
       const values = [
-        "",                        // Details (empty)
+        detailsText,               // Details (Col A)
         trainee.name,
         trainee.gender,
         trainee.age,
