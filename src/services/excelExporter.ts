@@ -296,15 +296,14 @@ export async function exportTimetable(fiscalYear: string): Promise<Buffer> {
   ws["!rows"] = [];
   ws["!rows"][currentRow] = { hpx: 22 };
   currentRow++;
-
-  const firstMonth = snapshot.months[0];
+  const firstMonth = (snapshot.months && snapshot.months.length > 0) ? snapshot.months[0] : null;
   ws[cellAddr(currentRow, 0)] = { v: "", t: "s" };
   ws[cellAddr(currentRow, 1)] = { v: "", t: "s" };
   
   const dayNames = ["Su", "M", "Tu", "W", "Th", "F", "Sa"];
   for (let d = 1; d <= 31; d++) {
     const colIndex = 1 + d;
-    const date = new Date(firstMonth.year, firstMonth.monthIndex, d);
+    const date = firstMonth ? new Date(firstMonth.year, firstMonth.monthIndex, d) : new Date();
     ws[cellAddr(currentRow, colIndex)] = {
       v: dayNames[date.getDay()],
       t: "s",
@@ -330,8 +329,9 @@ export async function exportTimetable(fiscalYear: string): Promise<Buffer> {
 
   let globalWeekCounter = 1;
 
-  for (let mIdx = 0; mIdx < snapshot.months.length; mIdx++) {
-    const monthData = snapshot.months[mIdx];
+  const monthsArray = Array.isArray(snapshot.months) ? snapshot.months : [];
+  for (let mIdx = 0; mIdx < monthsArray.length; mIdx++) {
+    const monthData = monthsArray[mIdx];
     
     ws[cellAddr(currentRow, 0)] = {
       v: `${monthData.monthName} ${String(monthData.year).slice(-2)}`,
@@ -688,8 +688,11 @@ export async function exportTimetable(fiscalYear: string): Promise<Buffer> {
   
   let monthCursor = rMonthStart + 1;
   const allMonthTotals = [];
-  for (let m = 0; m < 12; m++) {
-    const monthName = snapshot.months[m].monthName;
+  ws["!rows"] = [];
+
+  const allMonthsArray = Array.isArray(snapshot.months) ? snapshot.months : [];
+  for (let m = 0; m < allMonthsArray.length; m++) {
+    const monthName = allMonthsArray[m].monthName;
     ws[cellAddr(monthCursor, 38)] = { v: monthName, t: "s", s: { alignment: { horizontal: "center" } } };
     const monthProgCells = TIMETABLE_PROGRAMS.map(prog => monthTotalMap[`${prog}_${m}`]);
     ws[cellAddr(monthCursor, 39)] = { t: "n", f: `SUM(${monthProgCells.join(",")})`, s: { alignment: { horizontal: "center" } } };
