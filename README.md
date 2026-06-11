@@ -51,12 +51,13 @@ The **Creativa Training Filter System - Backend** is a highly secure, custom Nod
 ### 🚫 Blacklist Governance
 - **Mongoose Indexing**: Enforces uniqueness on National IDs to prevent duplicate blacklist entries.
 - **TTL (Time-To-Live)**: Employs MongoDB TTL indexes to automatically prune expired blacklist entries after their 4-month lifecycle.
+- **Safe Warning Workflows**: Exposes a bulk-check endpoint to preview current trainee warning levels, enabling frontend safety modals before applying punitive actions.
 - **Dynamic Tracks Module**: Fully functional Tracks API to manage available training tracks and attach them to blacklist entries.
 
 ### ⏱️ Hours & Timetable Tracking
-- **Session Consolidation**: Centralizes training session data with integrated fiscal year calculations.
+- **Session Consolidation**: Centralizes training session data with integrated fiscal year calculations, elegantly handling specialized tracking for "Incubation" and "Consultation" events.
 - **Bulk Imports & Deduplication**: Fast Excel parsing pipeline utilizing Mongoose uniqueness logic to gracefully skip duplicate sessions.
-- **Timetable Generation**: Aggregates sessions into complex, color-coded fiscal year timetables with automated snapshot caching.
+- **Timetable Generation**: Aggregates sessions into complex, color-coded fiscal year timetables with automated snapshot caching, selectively filtering out specialized programs.
 - **Planned Timetable & Comparison**: Stores yearly planned hours and computes real-time comparisons between actual performance and targeted plans.
 
 ### 🧾 Attendance Sheet Organizer
@@ -152,6 +153,7 @@ The backend enforces data security at the endpoint level using the `authorizeRol
 | `GET /api/blacklist/ids` | ✅ | ✅ | ✅ |
 | `POST /api/blacklist` | ✅ | ✅ | ❌ |
 | `POST /api/blacklist/bulk` | ✅ | ✅ | ❌ |
+| `POST /api/blacklist/bulk-check` | ✅ | ✅ | ❌ |
 | `DELETE /api/blacklist` | ✅ | ✅ | ❌ |
 | `GET /api/tracks` | ✅ | ✅ | ✅ |
 | `POST /api/tracks` | ✅ | ✅ | ❌ |
