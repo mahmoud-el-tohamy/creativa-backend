@@ -23,14 +23,14 @@ const createUserSchema = Joi.object({
     "string.empty": "كلمة المرور مطلوبة",
     "string.min": "كلمة المرور يجب أن تكون 8 أحرف على الأقل"
   }),
-  role: Joi.string().valid("employee", "viewer").required().messages({
+  role: Joi.string().valid("admin", "employee", "viewer", "accountant").required().messages({
     "any.only": "نوع الحساب غير صالح",
     "string.empty": "نوع الحساب مطلوب"
   })
 });
 
 const changeRoleSchema = Joi.object({
-  role: Joi.string().valid("employee", "viewer").required().messages({
+  role: Joi.string().valid("admin", "employee", "viewer", "accountant").required().messages({
     "any.only": "نوع الحساب غير صالح",
     "string.empty": "نوع الحساب مطلوب"
   })

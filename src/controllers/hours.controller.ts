@@ -780,6 +780,36 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
 
         await TrainingSession.insertMany(enriched, { ordered: false });
         importedCount = finalValidRows.length;
+
+        // ── Auto-sync specializations for all imported sessions ──────────────
+        const SPECIALIZATION_EXCLUDED = [
+          "Hackathons / Competitions",
+          "Consultation & Mentorship",
+          "Awareness event",
+        ];
+        await Promise.all(
+          enriched
+            .filter(
+              (row) =>
+                row.instructorId &&
+                row.programName &&
+                !SPECIALIZATION_EXCLUDED.includes(row.programName)
+            )
+            .map((row) =>
+              Instructor.findByIdAndUpdate(
+                row.instructorId,
+                { $addToSet: { specializations: row.programName } },
+                { new: false }
+              ).catch((err: unknown) =>
+                console.error(
+                  "[Hours] specialization sync error for instructor",
+                  row.instructorId,
+                  err
+                )
+              )
+            )
+        );
+
       }
     }
 

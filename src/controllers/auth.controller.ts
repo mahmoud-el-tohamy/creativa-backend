@@ -80,6 +80,13 @@ export const login = async (req: Request, res: Response, next: NextFunction): Pr
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
+    res.cookie("user-role", user.role, {
+      httpOnly: false, // must be readable by Next.js middleware
+      secure: isProd,
+      sameSite: (isProd ? "none" : "lax") as "none" | "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
     res.status(200).json({
       success: true,
       user: {
@@ -118,6 +125,7 @@ export const logout = async (req: Request, res: Response, next: NextFunction): P
 
     res.clearCookie("accessToken");
     res.clearCookie("refreshToken");
+    res.clearCookie("user-role");
     res.status(200).json({ success: true });
   } catch (error) {
     next(error);
@@ -159,6 +167,13 @@ export const refresh = async (req: Request, res: Response, next: NextFunction): 
       secure: isProd,
       sameSite: (isProd ? "none" : "lax") as "none" | "lax",
       maxAge: 15 * 60 * 1000,
+    });
+
+    res.cookie("user-role", user.role, {
+      httpOnly: false, // must be readable by Next.js middleware
+      secure: isProd,
+      sameSite: (isProd ? "none" : "lax") as "none" | "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days, matches refresh token logic
     });
 
     res.status(200).json({ success: true });

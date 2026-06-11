@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
+import type { IInstructor } from "./Instructor";
 
 // ─── Enums & Types ──────────────────────────────────────────────────────────
 
@@ -140,12 +141,38 @@ trainingSessionSchema.pre("save", async function () {
   this.fiscalYear = getFiscalYear(this.date);
 });
 
+// ─── Post-save hook — auto-sync instructor specializations ────────────────────
+
+const SPECIALIZATION_EXCLUDED_PROGRAMS = [
+  "Hackathons / Competitions",
+  "Consultation & Mentorship",
+  "Awareness event",
+] as const;
+
+trainingSessionSchema.post("save", async function () {
+  if (
+    this.instructorId &&
+    this.programName &&
+    !(SPECIALIZATION_EXCLUDED_PROGRAMS as readonly string[]).includes(this.programName)
+  ) {
+    // Lazy require to avoid circular dependency at module load time
+    const { Instructor } = await import("./Instructor");
+    await (Instructor as mongoose.Model<IInstructor>).findByIdAndUpdate(
+      this.instructorId,
+      { $addToSet: { specializations: this.programName } },
+      { new: false }
+    );
+  }
+});
+
 // ─── Indexes ─────────────────────────────────────────────────────────────────
 
 trainingSessionSchema.index({ date: 1 });
 trainingSessionSchema.index({ fiscalYear: 1, timetableProgram: 1 });
 trainingSessionSchema.index({ fiscalYear: 1, date: 1 });
 trainingSessionSchema.index({ programName: 1 });
+trainingSessionSchema.index({ instructorId: 1, date: 1 }); // for instructor dashboard queries
+
 
 // ─── Model ───────────────────────────────────────────────────────────────────
 
