@@ -80,8 +80,6 @@ const PROGRAM_COLORS: Record<string, { fill: string; text: string; light: string
   "Freelancing coaches": { fill: "FF5722", text: "FFFFFF", light: "FBE9E7" },
   "Hackathons / Competitions": { fill: "607D8B", text: "FFFFFF", light: "ECEFF1" },
   "Career development": { fill: "2E7D32", text: "FFFFFF", light: "E8F5E9" },
-  "Incubation": { fill: "AB47BC", text: "FFFFFF", light: "F3E5F5" },
-  "Consultation & Mentorship": { fill: "1565C0", text: "FFFFFF", light: "E3F2FD" },
 };
 
 // First 6 programs (excluding Incubation & Consultation)

@@ -142,7 +142,7 @@ export async function exportHoursTracking(fiscalYear: string): Promise<Buffer> {
     };
 
     ws[cellAddr(r, 0)] = {
-      v: s.programName,
+      v: s.type === "Consultation" ? "Consultation" : s.programName,
       t: "s",
       s: { ...baseStyle, fill: { fgColor: { rgb: TRACKING_PROGRAM_COLORS[s.programName] || fillRgb } } },
     };

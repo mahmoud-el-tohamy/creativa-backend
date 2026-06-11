@@ -425,6 +425,9 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
       return;
     }
 
+    const consultationsMapStr = req.body.consultationsMap;
+    const consultationsMap: Record<number, string> = consultationsMapStr ? JSON.parse(consultationsMapStr) : {};
+
     const workbook = XLSX.read(req.file.buffer, { type: "buffer", cellDates: true, cellHTML: false, cellFormula: true });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
@@ -584,6 +587,12 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
       // Skip completely empty rows
       if (!hasAnyValue) continue;
 
+      // Apply consultation overrides if any
+      if (consultationsMap[rowIdx]) {
+        normalized.programName = consultationsMap[rowIdx];
+        normalized.type = "Consultation";
+      }
+
       // getCellValue already handles all URL extraction (cell.l, HYPERLINK formula, direct URL)
       // Nothing to do here — all URL fields are already correctly set above
 
@@ -622,6 +631,8 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
         sessionType = "Awareness Event";
       } else if (sessionType.toLowerCase().includes("train")) {
         sessionType = "Training";
+      } else if (sessionType.toLowerCase().includes("consult") || progName.toLowerCase().includes("consult") || sessionType.includes("استشارة") || progName.includes("استشارة")) {
+        sessionType = "Consultation";
       }
       normalized.type = sessionType;
 
