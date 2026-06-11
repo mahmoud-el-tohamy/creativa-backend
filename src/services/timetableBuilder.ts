@@ -84,6 +84,7 @@ export async function rebuildTimetableSnapshot(
   const monthConsultationMap: Record<string, Record<string, Set<number>>> = {};
 
   for (const session of sessions) {
+    if (session.programName === "Incubation") continue;
     const d = new Date(session.date);
     const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, "0")}`;
     const day = d.getDate();

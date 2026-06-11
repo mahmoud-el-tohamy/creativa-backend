@@ -371,3 +371,38 @@ export const check = async (req: Request, res: Response, next: NextFunction): Pr
     next(error);
   }
 };
+
+export const bulkCheck = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { nationalIds } = req.body;
+
+    if (!Array.isArray(nationalIds) || nationalIds.length === 0) {
+      res.status(400).json({ success: false, message: "مصفوفة الأرقام القومية مطلوبة" });
+      return;
+    }
+
+    const entries = await BlacklistEntry.find({ nationalId: { $in: nationalIds } });
+    
+    const results: Record<string, { status: string; warningsCount: number }> = {};
+    
+    for (const id of nationalIds) {
+      results[id] = { status: "none", warningsCount: 0 };
+    }
+
+    for (const entry of entries) {
+      if (!entry.isExpired) {
+        results[entry.nationalId] = {
+          status: entry.status,
+          warningsCount: entry.absences?.length || 0
+        };
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      data: results
+    });
+  } catch (error) {
+    next(error);
+  }
+};

@@ -30,12 +30,17 @@ const bulkEntrySchema = Joi.object({
   entries: Joi.array().items(singleEntrySchema).optional(), // For backward compatibility
 });
 
+const bulkCheckSchema = Joi.object({
+  nationalIds: Joi.array().items(Joi.string().pattern(/^[23]\d{13}$/)).required(),
+});
+
 // All roles
 router.get("/", BlacklistController.list);
 router.get("/ids", BlacklistController.getIds);
 router.get("/check", BlacklistController.check);
 
 // Admin & Employee only
+router.post("/bulk-check", authorize("admin", "employee"), validate(bulkCheckSchema), BlacklistController.bulkCheck);
 router.post("/", authorize("admin", "employee"), validate(singleEntrySchema), BlacklistController.addSingle);
 router.post("/bulk", authorize("admin", "employee"), validate(bulkEntrySchema), BlacklistController.bulkAdd);
 router.delete("/:id", authorize("admin", "employee"), BlacklistController.remove);

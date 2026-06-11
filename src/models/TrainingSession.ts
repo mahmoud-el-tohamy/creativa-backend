@@ -10,6 +10,7 @@ export const PROGRAM_NAMES = [
   "Awareness event",
   "Hackathons / Competitions",
   "Acceleration program",
+  "Incubation",
 ] as const;
 
 export type ProgramName = (typeof PROGRAM_NAMES)[number];

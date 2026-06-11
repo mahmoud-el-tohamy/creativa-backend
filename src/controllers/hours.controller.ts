@@ -633,6 +633,8 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
         sessionType = "Training";
       } else if (sessionType.toLowerCase().includes("consult") || progName.toLowerCase().includes("consult") || sessionType.includes("استشارة") || progName.includes("استشارة")) {
         sessionType = "Consultation";
+      } else if (sessionType.toLowerCase().includes("incub") || progName === "Incubation") {
+        sessionType = "Incubation";
       }
       normalized.type = sessionType;
 
@@ -890,7 +892,19 @@ export const getDashboardStats = async (req: Request, res: Response, next: NextF
       { $match: baseMatch },
       {
         $group: {
-          _id: "$timetableProgram",
+          _id: {
+            $cond: {
+              if: { $eq: ["$type", "Consultation"] },
+              then: "Consultation",
+              else: {
+                $cond: {
+                  if: { $eq: ["$programName", "Incubation"] },
+                  then: "Incubation",
+                  else: "$timetableProgram",
+                },
+              },
+            },
+          },
           totalDays: { $sum: "$dayValue" },
           sessionCount: { $sum: 1 },
           attendeesCount: { $sum: "$attendeesCount" },
