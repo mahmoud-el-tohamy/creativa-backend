@@ -81,6 +81,7 @@ export async function rebuildTimetableSnapshot(
   type DayMap = Record<number, number>;
   type ProgramMap = Partial<Record<TimetableProgram, DayMap>>;
   const monthSessionMap: Record<string, ProgramMap> = {};
+  const monthConsultationMap: Record<string, Record<string, Set<number>>> = {};
 
   for (const session of sessions) {
     const d = new Date(session.date);
@@ -93,6 +94,12 @@ export async function rebuildTimetableSnapshot(
 
     const existing = monthSessionMap[key][prog]![day] ?? 0;
     monthSessionMap[key][prog]![day] = existing + session.dayValue;
+
+    if (session.type === "Consultation") {
+      if (!monthConsultationMap[key]) monthConsultationMap[key] = {};
+      if (!monthConsultationMap[key][prog]) monthConsultationMap[key][prog] = new Set();
+      monthConsultationMap[key][prog].add(day);
+    }
   }
 
   // 4. Build IMonthData array
@@ -123,6 +130,12 @@ export async function rebuildTimetableSnapshot(
       programs[prog] = progEntry;
     }
 
+    const consLookup = monthConsultationMap[key] ?? {};
+    const consultations: Record<string, number[]> = {};
+    for (const [p, daysSet] of Object.entries(consLookup)) {
+      consultations[p] = Array.from(daysSet);
+    }
+
     return {
       monthIndex,
       monthName: ARABIC_MONTH_NAMES[monthIndex],
@@ -130,6 +143,7 @@ export async function rebuildTimetableSnapshot(
       daysInMonth,
       monthlyDays,
       programs,
+      consultations,
     } as IMonthData;
   });
 

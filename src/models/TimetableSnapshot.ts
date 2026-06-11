@@ -15,6 +15,7 @@ export interface IMonthData {
   daysInMonth: number;
   monthlyDays: number;  // sum of all program monthTotals for this month
   programs: Record<TimetableProgram, IProgramDayMap>;
+  consultations?: Record<string, number[]>; // TimetableProgram -> Array of days
 }
 
 export interface IAnnualTotal {
@@ -86,6 +87,7 @@ const monthDataSchema = new Schema<IMonthData>(
     daysInMonth: { type: Number, required: true },
     monthlyDays: { type: Number, default: 0 },
     programs: { type: Schema.Types.Mixed, default: {} },
+    consultations: { type: Schema.Types.Mixed, default: {} },
   },
   { _id: false }
 );
