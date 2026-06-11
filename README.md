@@ -57,6 +57,7 @@ The **Creativa Training Filter System - Backend** is a highly secure, custom Nod
 - **Session Consolidation**: Centralizes training session data with integrated fiscal year calculations.
 - **Bulk Imports & Deduplication**: Fast Excel parsing pipeline utilizing Mongoose uniqueness logic to gracefully skip duplicate sessions.
 - **Timetable Generation**: Aggregates sessions into complex, color-coded fiscal year timetables with automated snapshot caching.
+- **Planned Timetable & Comparison**: Stores yearly planned hours and computes real-time comparisons between actual performance and targeted plans.
 
 ### 🧾 Attendance Sheet Organizer
 - **Excel Formatting Engine**: Uses `xlsx-js-style` to programmatically parse raw Google Forms data and reconstruct it into an advanced, multi-sheet Excel workbook.
@@ -168,6 +169,11 @@ The backend enforces data security at the endpoint level using the `authorizeRol
 | `GET /api/hours/instructors` | ✅ | ✅ | ✅ |
 | `DELETE /api/hours/sessions/bulk` | ✅ | ✅ | ❌ |
 | `POST /api/attendance-sheet/build` | ✅ | ✅ | ❌ |
+| `GET /api/planned/:fiscalYear` | ✅ | ✅ | ✅ |
+| `PUT /api/planned/:fiscalYear` | ✅ | ✅ | ❌ |
+| `PATCH /api/planned/:fiscalYear/cell` | ✅ | ✅ | ❌ |
+| `GET /api/planned/:fiscalYear/comparison` | ✅ | ✅ | ✅ |
+| `GET /api/planned/:fiscalYear/export` | ✅ | ✅ | ✅ |
 
 ---
 
