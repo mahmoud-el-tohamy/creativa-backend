@@ -627,6 +627,13 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
       let progName = String(normalized.programName ?? "").trim();
       if (progName.toLowerCase().includes("awareness event")) {
         progName = "Awareness event";
+      } else if (progName.toLowerCase().includes("accelerated entrepreneur")) {
+        progName = "Acceleration program";
+      } else if (
+        progName.toLowerCase().includes("hackathon") ||
+        progName.toLowerCase().includes("competition")
+      ) {
+        progName = "Hackathons / Competitions";
       }
       normalized.programName = progName;
 
@@ -638,7 +645,12 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
         progName === "Awareness event"
       ) {
         sessionType = "Awareness Event";
-      } else if (sessionType.toLowerCase().includes("train")) {
+      } else if (
+        sessionType.toLowerCase().includes("train") ||
+        sessionType.toLowerCase().includes("hackathon") ||
+        sessionType.toLowerCase().includes("competition") ||
+        progName === "Hackathons / Competitions"
+      ) {
         sessionType = "Training";
       } else if (sessionType.toLowerCase().includes("consult") || progName.toLowerCase().includes("consult") || sessionType.includes("استشارة") || progName.includes("استشارة")) {
         sessionType = "Consultation";
@@ -714,18 +726,21 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
       }
 
       // Resolve instructor
-      const instructorLookup = instructorMap.get(String(value.instructorName ?? "").trim().toLowerCase());
-      let instructorId: string;
-      if (instructorLookup) {
-        instructorId = String(instructorLookup._id);
-      } else {
-        // Create instructor on-the-fly
-        const newInstructor = await Instructor.create({
-          name: String(value.instructorName).trim(),
-          createdBy: req.user?.id,
-        });
-        instructorMap.set(String(value.instructorName).trim().toLowerCase(), newInstructor);
-        instructorId = String(newInstructor._id);
+      const instrNameRaw = String(value.instructorName ?? "").trim();
+      let instructorId: string | null = null;
+      if (instrNameRaw !== "") {
+        const instructorLookup = instructorMap.get(instrNameRaw.toLowerCase());
+        if (instructorLookup) {
+          instructorId = String(instructorLookup._id);
+        } else {
+          // Create instructor on-the-fly
+          const newInstructor = await Instructor.create({
+            name: instrNameRaw,
+            createdBy: req.user?.id,
+          });
+          instructorMap.set(instrNameRaw.toLowerCase(), newInstructor);
+          instructorId = String(newInstructor._id);
+        }
       }
 
       const fiscalYear = getFiscalYear(new Date(value.date));
@@ -748,7 +763,7 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
           $or: validRows.map((r) => ({
             sessionName: r.sessionName,
             date: new Date(r.date),
-            instructorId: new Types.ObjectId(String(r.instructorId)),
+            instructorId: r.instructorId ? new Types.ObjectId(String(r.instructorId)) : null,
           })),
         },
         { sessionName: 1, date: 1, instructorId: 1 }
@@ -759,14 +774,14 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
           (s) =>
             `${String(s.sessionName).trim().toLowerCase()}_${
               new Date(s.date).toISOString().split("T")[0]
-            }_${String(s.instructorId)}`
+            }_${s.instructorId ? String(s.instructorId) : "null"}`
         )
       );
 
       const finalValidRows = validRows.filter((r) => {
         const key = `${String(r.sessionName).trim().toLowerCase()}_${
           new Date(r.date).toISOString().split("T")[0]
-        }_${String(r.instructorId)}`;
+        }_${r.instructorId ? String(r.instructorId) : "null"}`;
         if (existingKeys.has(key)) {
           errorRows.push({
             row: -1, // -1 indicates it's a general/bulk error or we can use the data
@@ -781,7 +796,7 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
       if (finalValidRows.length > 0) {
         const enriched = finalValidRows.map((r) => ({
           ...r,
-          instructorId: new Types.ObjectId(String(r.instructorId)),
+          instructorId: r.instructorId ? new Types.ObjectId(String(r.instructorId)) : null,
           dayValue: r.hours < 5 ? 0.5 : 1.0,
           timetableProgram: mapProgramToTimetableRow(r.programName),
           fiscalYear: getFiscalYear(new Date(r.date)),
