@@ -179,7 +179,7 @@ export async function exportInstructorProfile(instructorId: string): Promise<Buf
  * One row per specialization per instructor.
  */
 export async function exportAllInstructorProfiles(): Promise<Buffer> {
-  const instructors = await Instructor.find({ isActive: true }).lean();
+  const instructors = await Instructor.find({ isActive: true });
 
   // Fetch all sessions for active instructors to extract dynamic specializations/session names
   const instructorIds = instructors.map(i => i._id.toString());
@@ -582,7 +582,7 @@ export async function exportAllInstructorSessions(
     .lean();
 
   const instructorIds = [...new Set(rawSessions.map(s => s.instructorId?.toString()))].filter(Boolean) as string[];
-  const instructors = await Instructor.find({ _id: { $in: instructorIds } }).lean();
+  const instructors = await Instructor.find({ _id: { $in: instructorIds } });
   
   const instructorMap = new Map();
   for (const inst of instructors) {

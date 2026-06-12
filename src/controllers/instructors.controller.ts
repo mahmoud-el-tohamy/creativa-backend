@@ -93,15 +93,18 @@ export const listInstructors = async (
     const skip = (pageNum - 1) * limitNum;
 
     const [data, total] = await Promise.all([
-      Instructor.find(query).sort({ name: 1 }).skip(skip).limit(limitNum).lean({ virtuals: true }),
+      Instructor.find(query).sort({ name: 1 }).skip(skip).limit(limitNum),
       Instructor.countDocuments(query),
     ]);
 
     // Normalize: ensure specializations is always an array (old docs may be missing it)
-    const normalized = data.map((doc) => ({
-      ...doc,
-      specializations: Array.isArray(doc.specializations) ? doc.specializations : [],
-    }));
+    const normalized = data.map((doc) => {
+      const obj = doc.toObject({ virtuals: true });
+      return {
+        ...obj,
+        specializations: Array.isArray(obj.specializations) ? obj.specializations : [],
+      };
+    });
 
     res.status(200).json({
       success: true,
