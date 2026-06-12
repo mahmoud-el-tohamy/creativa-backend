@@ -624,7 +624,7 @@ export async function exportAllInstructorSessions(
       alignment: { horizontal: "center", vertical: "center" },
     },
   };
-  (ws["!merges"] as unknown[]).push({ s: { r: 0, c: 0 }, e: { r: 0, c: 15 } });
+  (ws["!merges"] as unknown[]).push({ s: { r: 0, c: 0 }, e: { r: 0, c: 14 } });
   (ws["!rows"] as unknown[])[0] = { hpx: 28 };
 
   // ── Headers Row ──
@@ -798,7 +798,7 @@ export async function exportAllInstructorSessions(
     r++;
   }
 
-  ws["!ref"] = rangeAddr(0, 0, Math.max(r - 1, dataStartRow), 15);
+  ws["!ref"] = rangeAddr(0, 0, Math.max(r - 1, dataStartRow), 14);
   ws["!freeze"] = { xSplit: 0, ySplit: 2, topLeftCell: "A3" };
 
   XlsxStyle.utils.book_append_sheet(wb, ws, "جلسات المدربين");

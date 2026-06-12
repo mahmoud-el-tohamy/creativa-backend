@@ -406,15 +406,16 @@ export const forceRebuild = async (req: Request, res: Response, next: NextFuncti
 // ─── IMPORT FROM EXCEL ────────────────────────────────────────────────────────
 
 interface ImportedRow {
+  sourceRow: number;
   programName: ProgramName;
   sessionName: string;
   date: Date;
   hours: number;
   mode: "online" | "offline";
-  instructorId: string;
+  instructorId: string | null;
   instructorName: string;
   attendeesCount: number;
-  type: "Training" | "Awareness Event";
+  type: "Training" | "Awareness Event" | "Incubation" | "Consultation";
   evaluationReportUrl: string;
   trainingReportUrl: string;
   createdBy: Types.ObjectId;
@@ -696,7 +697,6 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
           }
         }
       }
-
       // Normalize attendees
       if (normalized.attendeesCount !== undefined && normalized.attendeesCount !== "") {
         normalized.attendeesCount = parseInt(String(normalized.attendeesCount), 10) || 0;
@@ -748,53 +748,129 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
 
       validRows.push({
         ...value,
+        sourceRow: rowNum,
         instructorId,
         createdBy: new Types.ObjectId(String(req.user?.id)),
         createdByName: req.user?.displayName ?? "",
+        instructorName: instrNameRaw,
       });
     }
 
-    // Bulk insert (Filter out duplicates first)
+    // Bulk insert (or update existing)
     let importedCount = 0;
+    let updatedCount = 0;
+    const updatedDetails: Array<{
+      row: number;
+      sessionName: string;
+      date: string;
+      instructorName: string;
+      changes: Array<{ field: string; old: any; new: any }>;
+    }> = [];
+
+    const unchangedDuplicates: Array<{
+      row: number;
+      sessionName: string;
+      date: string;
+      instructorName: string;
+    }> = [];
+
     if (validRows.length > 0) {
-      // Find existing to prevent duplicates (sessionName + date + instructorId)
-      const existingSessions = await TrainingSession.find(
-        {
-          $or: validRows.map((r) => ({
-            sessionName: r.sessionName,
-            date: new Date(r.date),
-            instructorId: r.instructorId ? new Types.ObjectId(String(r.instructorId)) : null,
-          })),
-        },
-        { sessionName: 1, date: 1, instructorId: 1 }
-      ).lean();
+      // Find existing sessions to update instead of failing as duplicates
+      const existingSessions = await TrainingSession.find({
+        $or: validRows.map((r) => ({
+          sessionName: r.sessionName,
+          date: new Date(r.date),
+          instructorId: r.instructorId ? new Types.ObjectId(String(r.instructorId)) : null,
+        })),
+      });
 
-      const existingKeys = new Set(
-        existingSessions.map(
-          (s) =>
-            `${String(s.sessionName).trim().toLowerCase()}_${
-              new Date(s.date).toISOString().split("T")[0]
-            }_${s.instructorId ? String(s.instructorId) : "null"}`
-        )
-      );
+      const existingMap = new Map<string, any>();
+      for (const s of existingSessions) {
+        const key = `${String(s.sessionName).trim().toLowerCase()}_${
+          new Date(s.date).toISOString().split("T")[0]
+        }_${s.instructorId ? String(s.instructorId) : "null"}`;
+        existingMap.set(key, s);
+      }
 
-      const finalValidRows = validRows.filter((r) => {
+      const bulkOps: any[] = [];
+      const newRowsToInsert: any[] = [];
+
+      for (const r of validRows) {
         const key = `${String(r.sessionName).trim().toLowerCase()}_${
           new Date(r.date).toISOString().split("T")[0]
         }_${r.instructorId ? String(r.instructorId) : "null"}`;
-        if (existingKeys.has(key)) {
-          errorRows.push({
-            row: -1, // -1 indicates it's a general/bulk error or we can use the data
-            data: r as unknown as Record<string, unknown>,
-            errors: ["تكرار: هذه الجلسة مضافة مسبقاً بنفس البيانات"],
-          });
-          return false;
-        }
-        return true;
-      });
 
-      if (finalValidRows.length > 0) {
-        const enriched = finalValidRows.map((r) => ({
+        const existingDoc = existingMap.get(key);
+        if (existingDoc) {
+          const updateFields: Record<string, any> = {};
+          const changes: Array<{ field: string; old: any; new: any }> = [];
+
+          if (r.programName && r.programName !== existingDoc.programName) {
+            updateFields.programName = r.programName;
+            updateFields.timetableProgram = mapProgramToTimetableRow(r.programName);
+            changes.push({ field: "programName", old: existingDoc.programName, new: r.programName });
+          }
+          if (r.hours !== undefined && r.hours !== existingDoc.hours) {
+            updateFields.hours = r.hours;
+            updateFields.dayValue = r.hours < 5 ? 0.5 : 1.0;
+            changes.push({ field: "hours", old: existingDoc.hours, new: r.hours });
+          }
+          if (r.mode && r.mode !== existingDoc.mode) {
+            updateFields.mode = r.mode;
+            changes.push({ field: "mode", old: existingDoc.mode, new: r.mode });
+          }
+          if (r.attendeesCount !== undefined && r.attendeesCount !== existingDoc.attendeesCount) {
+            updateFields.attendeesCount = r.attendeesCount;
+            changes.push({ field: "attendeesCount", old: existingDoc.attendeesCount, new: r.attendeesCount });
+          }
+          if (r.type && r.type !== existingDoc.type) {
+            updateFields.type = r.type;
+            changes.push({ field: "type", old: existingDoc.type, new: r.type });
+          }
+          if (r.evaluationReportUrl !== undefined && r.evaluationReportUrl !== existingDoc.evaluationReportUrl) {
+            updateFields.evaluationReportUrl = r.evaluationReportUrl;
+            changes.push({ field: "evaluationReportUrl", old: existingDoc.evaluationReportUrl, new: r.evaluationReportUrl });
+          }
+          if (r.trainingReportUrl !== undefined && r.trainingReportUrl !== existingDoc.trainingReportUrl) {
+            updateFields.trainingReportUrl = r.trainingReportUrl;
+            changes.push({ field: "trainingReportUrl", old: existingDoc.trainingReportUrl, new: r.trainingReportUrl });
+          }
+
+          if (changes.length > 0) {
+            updateFields.updatedBy = new Types.ObjectId(String(req.user?.id));
+            bulkOps.push({
+              updateOne: {
+                filter: { _id: existingDoc._id },
+                update: { $set: updateFields },
+              },
+            });
+            updatedCount++;
+            updatedDetails.push({
+              row: r.sourceRow,
+              sessionName: r.sessionName,
+              date: r.date.toISOString(),
+              instructorName: r.instructorName || "بدون مدرب",
+              changes,
+            });
+          } else {
+            unchangedDuplicates.push({
+              row: r.sourceRow,
+              sessionName: r.sessionName,
+              date: r.date.toISOString(),
+              instructorName: r.instructorName || "بدون مدرب",
+            });
+          }
+        } else {
+          newRowsToInsert.push(r);
+        }
+      }
+
+      if (bulkOps.length > 0) {
+        await TrainingSession.bulkWrite(bulkOps);
+      }
+
+      if (newRowsToInsert.length > 0) {
+        const enriched = newRowsToInsert.map((r) => ({
           ...r,
           instructorId: r.instructorId ? new Types.ObjectId(String(r.instructorId)) : null,
           dayValue: r.hours < 5 ? 0.5 : 1.0,
@@ -803,38 +879,37 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
         }));
 
         await TrainingSession.insertMany(enriched, { ordered: false });
-        importedCount = finalValidRows.length;
+        importedCount = newRowsToInsert.length;
+      }
 
-        // ── Auto-sync specializations for all imported sessions ──────────────
-        const SPECIALIZATION_EXCLUDED = [
-          "Hackathons / Competitions",
-          "Consultation & Mentorship",
-          "Awareness event",
-        ];
-        await Promise.all(
-          enriched
-            .filter(
-              (row) =>
-                row.instructorId &&
-                row.programName &&
-                !SPECIALIZATION_EXCLUDED.includes(row.programName)
-            )
-            .map((row) =>
-              Instructor.findByIdAndUpdate(
+      // ── Auto-sync specializations for all valid sessions ──────────────
+      const SPECIALIZATION_EXCLUDED = [
+        "Hackathons / Competitions",
+        "Consultation & Mentorship",
+        "Awareness event",
+      ];
+      await Promise.all(
+        validRows
+          .filter(
+            (row) =>
+              row.instructorId &&
+              row.programName &&
+              !SPECIALIZATION_EXCLUDED.includes(row.programName)
+          )
+          .map((row) =>
+            Instructor.findByIdAndUpdate(
+              row.instructorId,
+              { $addToSet: { specializations: row.programName } },
+              { new: false }
+            ).catch((err: unknown) =>
+              console.error(
+                "[Hours] specialization sync error for instructor",
                 row.instructorId,
-                { $addToSet: { specializations: row.programName } },
-                { new: false }
-              ).catch((err: unknown) =>
-                console.error(
-                  "[Hours] specialization sync error for instructor",
-                  row.instructorId,
-                  err
-                )
+                err
               )
             )
-        );
-
-      }
+          )
+      );
     }
 
     // Rebuild all affected fiscal years (fire-and-forget)
@@ -849,16 +924,19 @@ export const importSessions = async (req: Request, res: Response, next: NextFunc
       performedBy: req.user?.id,
       performedByName: req.user?.displayName,
       performedByRole: req.user?.role,
-      details: `استيراد ${importedCount} جلسات تدريبية، تجاهل ${errorRows.length} سجل`,
-      metadata: { importedCount, skippedCount: errorRows.length, affectedFiscalYears: [...affectedFiscalYears] },
+      details: `استيراد ${importedCount} جلسات جديدة وتحديث ${updatedCount} جلسات، تجاهل ${errorRows.length} سجل`,
+      metadata: { importedCount, updatedCount, skippedCount: errorRows.length, affectedFiscalYears: [...affectedFiscalYears] },
       ipAddress: getIp(req),
     });
 
     res.status(200).json({
       success: true,
       imported: importedCount,
+      updated: updatedCount,
       skipped: errorRows.length,
       errors: errorRows,
+      updatedDetails,
+      unchangedDuplicates,
     });
   } catch (error) {
     next(error);
