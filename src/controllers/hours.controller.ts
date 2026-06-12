@@ -26,8 +26,17 @@ const getIp = (req: Request): string => {
 
 const sessionSchema = Joi.object({
   programName: Joi.string()
-    .valid(...PROGRAM_NAMES)
     .required()
+    .when("type", {
+      is: "Consultation",
+      then: Joi.valid(
+        "Career Development",
+        "Freelancing",
+        "Entrepreneurship",
+        "Acceleration program"
+      ),
+      otherwise: Joi.valid(...PROGRAM_NAMES),
+    })
     .messages({ "any.only": "اسم البرنامج غير صالح", "any.required": "اسم البرنامج مطلوب" }),
   sessionName: Joi.string().trim().required().messages({ "any.required": "اسم الجلسة مطلوب" }),
   date: Joi.date().iso().required().messages({ "any.required": "التاريخ مطلوب", "date.base": "التاريخ غير صالح" }),
