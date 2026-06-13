@@ -252,78 +252,72 @@ export async function exportAllInstructorProfiles(): Promise<Buffer> {
     const sessionPrograms = [...new Set(instSessions.map(s => s.programName).filter(Boolean))];
     
     // Use profile specializations if available, otherwise fallback to session programs
-    let specializations = instructor.specializations && instructor.specializations.length > 0
+    const specializations = instructor.specializations && instructor.specializations.length > 0
       ? instructor.specializations
       : sessionPrograms;
     
-    if (specializations.length === 0) {
-      specializations = [""];
+    const spec = specializations.filter(Boolean).join(", ");
+    const fillRgb = currentRow % 2 === 0 ? "F5F5F5" : "FFFFFF";
+
+    const baseStyle = {
+      fill: { fgColor: { rgb: fillRgb } },
+      border: thinBorder,
+      alignment: { vertical: "center", wrapText: true },
+    };
+
+    if (instructor.cvLink) {
+      ws[cellAddr(currentRow, 0)] = {
+        v: instructor.cvLink,
+        t: "s",
+        l: { Target: instructor.cvLink },
+        s: {
+          ...baseStyle,
+          font: { color: { rgb: "0563C1" }, underline: true },
+        },
+      };
+    } else {
+      ws[cellAddr(currentRow, 0)] = { v: "", t: "s", s: baseStyle };
     }
 
-    for (let i = 0; i < specializations.length; i++) {
-      const spec = specializations[i];
-      const fillRgb = currentRow % 2 === 0 ? "F5F5F5" : "FFFFFF";
+    ws[cellAddr(currentRow, 1)] = {
+      v: instructor.graduationYear ?? "",
+      t: instructor.graduationYear ? "n" : "s",
+      s: { ...baseStyle, alignment: { horizontal: "center", vertical: "center" } },
+    };
+    
+    ws[cellAddr(currentRow, 2)] = {
+      v: instructor.dailyConsultationRate || 0,
+      t: "n",
+      z: '#,##0.00"جنيه"',
+      s: baseStyle,
+    };
 
-      const baseStyle = {
-        fill: { fgColor: { rgb: fillRgb } },
-        border: thinBorder,
-        alignment: { vertical: "center", wrapText: true },
-      };
+    ws[cellAddr(currentRow, 3)] = {
+      v: instructor.dailyTrainingRate || 0,
+      t: "n",
+      z: '#,##0.00"جنيه"',
+      s: baseStyle,
+    };
 
-      if (instructor.cvLink) {
-        ws[cellAddr(currentRow, 0)] = {
-          v: instructor.cvLink,
-          t: "s",
-          l: { Target: instructor.cvLink },
-          s: {
-            ...baseStyle,
-            font: { color: { rgb: "0563C1" }, underline: true },
-          },
-        };
-      } else {
-        ws[cellAddr(currentRow, 0)] = { v: "", t: "s", s: baseStyle };
-      }
+    ws[cellAddr(currentRow, 4)] = { v: spec, t: "s", s: baseStyle };
+    ws[cellAddr(currentRow, 5)] = { v: instructor.name, t: "s", s: baseStyle };
+    
+    ws[cellAddr(currentRow, 6)] = {
+      v: instructor.hourlyConsultationRate || 0,
+      t: "n",
+      z: '#,##0.00"جنيه"',
+      s: baseStyle,
+    };
 
-      ws[cellAddr(currentRow, 1)] = {
-        v: instructor.graduationYear ?? "",
-        t: instructor.graduationYear ? "n" : "s",
-        s: { ...baseStyle, alignment: { horizontal: "center", vertical: "center" } },
-      };
-      
-      ws[cellAddr(currentRow, 2)] = {
-        v: instructor.dailyConsultationRate || 0,
-        t: "n",
-        z: '#,##0.00"جنيه"',
-        s: baseStyle,
-      };
+    ws[cellAddr(currentRow, 7)] = {
+      v: instructor.hourlyTrainingRate || 0,
+      t: "n",
+      z: '#,##0.00"جنيه"',
+      s: baseStyle,
+    };
 
-      ws[cellAddr(currentRow, 3)] = {
-        v: instructor.dailyTrainingRate || 0,
-        t: "n",
-        z: '#,##0.00"جنيه"',
-        s: baseStyle,
-      };
-
-      ws[cellAddr(currentRow, 4)] = { v: spec, t: "s", s: baseStyle };
-      ws[cellAddr(currentRow, 5)] = { v: instructor.name, t: "s", s: baseStyle };
-      
-      ws[cellAddr(currentRow, 6)] = {
-        v: instructor.hourlyConsultationRate || 0,
-        t: "n",
-        z: '#,##0.00"جنيه"',
-        s: baseStyle,
-      };
-
-      ws[cellAddr(currentRow, 7)] = {
-        v: instructor.hourlyTrainingRate || 0,
-        t: "n",
-        z: '#,##0.00"جنيه"',
-        s: baseStyle,
-      };
-
-      (ws["!rows"] as unknown[])[currentRow] = { hpx: 18 };
-      currentRow++;
-    }
+    (ws["!rows"] as unknown[])[currentRow] = { hpx: 18 };
+    currentRow++;
   }
 
   const lastRow = currentRow - 1;
