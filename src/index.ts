@@ -25,6 +25,7 @@ import hoursRoutes from "./routes/hours.routes";
 import attendanceSheetRoutes from "./routes/attendanceSheet.routes";
 import plannedRoutes from "./routes/planned.routes";
 import instructorsRoutes from "./routes/instructors.routes";
+import financeRoutes from "./routes/finance.routes";
 import { errorHandler } from "./middleware/errorHandler";
 
 const app: Express = express();
@@ -131,6 +132,7 @@ app.use("/api/hours", hoursRoutes);
 app.use("/api/attendance-sheet", attendanceSheetRoutes);
 app.use("/api/planned", plannedRoutes);
 app.use("/api/instructors", instructorsRoutes);
+app.use("/api/finance", financeRoutes);
 
 
 

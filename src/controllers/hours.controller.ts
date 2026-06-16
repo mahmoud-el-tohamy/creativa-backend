@@ -71,6 +71,7 @@ export const listSessions = async (req: Request, res: Response, next: NextFuncti
       dateFrom,
       dateTo,
       mode,
+      type,
       page = "1",
       limit = "50",
       sort = "newest",
@@ -81,6 +82,7 @@ export const listSessions = async (req: Request, res: Response, next: NextFuncti
     if (programName) query.programName = programName;
     if (instructorId) query.instructorId = instructorId;
     if (mode) query.mode = mode;
+    if (type) query.type = type;
     if (dateFrom || dateTo) {
       const dateQ: Record<string, Date> = {};
       if (dateFrom) dateQ.$gte = new Date(dateFrom as string);
