@@ -161,8 +161,8 @@ export async function computeComparison(fiscalYear: string): Promise<TimetableCo
         ...Object.keys(actualMonth).map(Number),
       ]);
 
-      let monthPlanned = 0;
-      let monthActual = 0;
+      let monthPlanned = (plannedMonth["consultations"] as number | undefined) ?? 0;
+      let monthActual = ((actualMonth as any)["consultationTotal"] as number | undefined) ?? 0;
       const dayEntries: { [day: number]: ComparisonCell } = {};
 
       for (const day of allDays) {

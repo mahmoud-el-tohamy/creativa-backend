@@ -6,6 +6,7 @@ import { TIMETABLE_PROGRAMS, TimetableProgram } from "./TrainingSession";
 export interface IProgramDayMap {
   [day: number]: number; // day-of-month → dayValue
   monthTotal: number;
+  consultationTotal?: number;
 }
 
 export interface IMonthData {

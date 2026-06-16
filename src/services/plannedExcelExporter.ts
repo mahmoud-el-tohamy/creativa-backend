@@ -325,7 +325,7 @@ interface CalendarSheetOptions {
   fiscalYear: string;
   sheetTitle: string;
   /** For each program+month: { [day]: value } */
-  getCellValue: (prog: string, calMonth: number, day: number) => number | null;
+  getCellValue: (prog: string, calMonth: number, day: number | string) => number | null;
   /** Style for a non-zero cell */
   getCellStyle: (value: number) => Record<string, unknown>;
 }
@@ -340,7 +340,8 @@ function buildCalendarSheet(opts: CalendarSheetOptions): Record<string, unknown>
     { wch: 6 },
     { wch: 22 },
     ...Array(31).fill({ wch: 3.5 }),
-    { wch: 10 },
+    { wch: 12 }, // Consultations
+    { wch: 10 }, // Total Days
   ];
 
   const { startYear } = parseFiscalYear(fiscalYear);
@@ -357,7 +358,7 @@ function buildCalendarSheet(opts: CalendarSheetOptions): Record<string, unknown>
       alignment: { horizontal: "center", vertical: "center" },
     },
   };
-  merges.push({ s: { r: currentRow, c: 0 }, e: { r: currentRow, c: 33 } });
+  merges.push({ s: { r: currentRow, c: 0 }, e: { r: currentRow, c: 34 } });
   ws["!rows"] = [{ hpx: 22 }] as unknown[];
   const rows = ws["!rows"] as Array<{ hpx: number }>;
   currentRow++;
@@ -382,6 +383,15 @@ function buildCalendarSheet(opts: CalendarSheetOptions): Record<string, unknown>
     };
   }
   ws[cellAddr(currentRow, 33)] = {
+    v: "Consultations",
+    t: "s",
+    s: {
+      font: { bold: true, color: { rgb: "FFFFFF" } },
+      fill: { fgColor: { rgb: HEADER_FILL } },
+      alignment: { horizontal: "center" },
+    },
+  };
+  ws[cellAddr(currentRow, 34)] = {
     v: "Total Days",
     t: "s",
     s: {
@@ -430,6 +440,11 @@ function buildCalendarSheet(opts: CalendarSheetOptions): Record<string, unknown>
       };
     }
     ws[cellAddr(currentRow, 33)] = {
+      v: "Consultations",
+      t: "s",
+      s: { alignment: { horizontal: "center" }, font: { bold: true, sz: 8 } },
+    };
+    ws[cellAddr(currentRow, 34)] = {
       v: "Total Days",
       t: "s",
       s: { alignment: { horizontal: "center" }, font: { bold: true, sz: 8 } },
@@ -540,10 +555,47 @@ function buildCalendarSheet(opts: CalendarSheetOptions): Record<string, unknown>
         ws[cellAddr(progRow, colIndex)] = cellObj;
       }
 
-      // Total Days formula
-      ws[cellAddr(progRow, 33)] = {
+      // Consultations cell at col 33
+      const consVal = getCellValue(prog, calMonth, "consultations") ?? 0;
+      let consCellObj: Record<string, unknown> = {
+        v: "",
+        t: "s",
+        s: {
+          font: { sz: 8 },
+          fill: { fgColor: { rgb: "FFFFFF" } },
+          alignment: { horizontal: "center" },
+          border: {
+            top: { style: "thin", color: { rgb: "E0E0E0" } },
+            bottom: { style: "thin", color: { rgb: "E0E0E0" } },
+            left: { style: "thin", color: { rgb: "E0E0E0" } },
+            right: { style: "thin", color: { rgb: "E0E0E0" } },
+          },
+        },
+      };
+      if (consVal !== 0) {
+        const customStyle = getCellStyle(consVal);
+        consCellObj = {
+          v: consVal,
+          t: "n",
+          s: {
+            font: { sz: 8, bold: true, ...(customStyle.font ?? {}) },
+            fill: { fgColor: { rgb: "E8D5F5" } }, // purple light fill
+            alignment: { horizontal: "center" },
+            border: {
+              top: { style: "thin", color: { rgb: "E0E0E0" } },
+              bottom: { style: "thin", color: { rgb: "E0E0E0" } },
+              left: { style: "thin", color: { rgb: "E0E0E0" } },
+              right: { style: "thin", color: { rgb: "E0E0E0" } },
+            },
+          },
+        };
+      }
+      ws[cellAddr(progRow, 33)] = consCellObj;
+
+      // Total Days formula (C to AH)
+      ws[cellAddr(progRow, 34)] = {
         t: "n",
-        f: `SUM(C${progRow + 1}:AG${progRow + 1})`,
+        f: `SUM(C${progRow + 1}:AH${progRow + 1})`,
         s: {
           font: { bold: true, sz: 9 },
           fill: { fgColor: { rgb: progStyle?.light ?? "FFFFFF" } },
@@ -585,6 +637,15 @@ function buildCalendarSheet(opts: CalendarSheetOptions): Record<string, unknown>
       s: {
         font: { bold: true },
         fill: { fgColor: { rgb: "C6EFCE" } },
+        alignment: { horizontal: "center" },
+      },
+    };
+    ws[cellAddr(subRow, 34)] = {
+      t: "n",
+      f: `SUM(AI${subRow - progCount + 1}:AI${subRow})`,
+      s: {
+        font: { bold: true },
+        fill: { fgColor: { rgb: "C6EFCE" } },
         alignment: { horizontal: "right" },
       },
     };
@@ -592,7 +653,7 @@ function buildCalendarSheet(opts: CalendarSheetOptions): Record<string, unknown>
     currentRow++;
 
     // Separator row
-    for (let c = 0; c <= 33; c++) {
+    for (let c = 0; c <= 34; c++) {
       ws[cellAddr(currentRow, c)] = {
         v: "",
         t: "s",
@@ -603,7 +664,7 @@ function buildCalendarSheet(opts: CalendarSheetOptions): Record<string, unknown>
     currentRow++;
   }
 
-  ws["!ref"] = rangeAddr(0, 0, currentRow, 33);
+  ws["!ref"] = rangeAddr(0, 0, currentRow, 34);
   ws["!freeze"] = { xSplit: 2, ySplit: 2, topLeftCell: "C3" };
 
   return ws;
@@ -670,8 +731,13 @@ export async function exportPlannedTimetable(fiscalYear: string): Promise<Buffer
     fiscalYear,
     sheetTitle: `Timetable for CHIs Training Plan Year ${startYear} - ${endYear} — Difference`,
     getCellValue: (prog, calMonth, day) => {
-      const actual = actualMap[calMonth]?.[prog]?.[day] ?? 0;
-      const planned = plannedMap[calMonth]?.[prog]?.[day] ?? 0;
+      if (day === "consultations") {
+        const actual = ((actualMap[calMonth]?.[prog] as any)?.consultationTotal) ?? 0;
+        const planned = (plannedDoc?.data?.[prog]?.[String(calMonth)]?.[day] as number) ?? 0;
+        return actual - planned;
+      }
+      const actual = actualMap[calMonth]?.[prog]?.[day as number] ?? 0;
+      const planned = plannedMap[calMonth]?.[prog]?.[day as number] ?? 0;
       return actual - planned;
     },
     getCellStyle: (value) => {
@@ -692,7 +758,10 @@ export async function exportPlannedTimetable(fiscalYear: string): Promise<Buffer
     fiscalYear,
     sheetTitle: `Timetable for CHIs Training Plan Year ${startYear} - ${endYear} — Planned`,
     getCellValue: (prog, calMonth, day) => {
-      return plannedMap[calMonth]?.[prog]?.[day] ?? 0;
+      if (day === "consultations") {
+        return (plannedDoc?.data?.[prog]?.[String(calMonth)]?.[day] as number) ?? 0;
+      }
+      return plannedMap[calMonth]?.[prog]?.[day as number] ?? 0;
     },
     getCellStyle: (value) => {
       if (value === 0.5) {

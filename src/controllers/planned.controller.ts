@@ -130,24 +130,35 @@ export async function updatePlannedCell(req: Request, res: Response): Promise<vo
       return;
     }
 
-    // Validate day (1-31)
-    const dayNum = Number(day);
-    if (!Number.isInteger(dayNum) || dayNum < 1 || dayNum > 31) {
-      res.status(400).json({ success: false, message: "رقم اليوم غير صالح (1-31)" });
-      return;
+    // Validate day (1-31) or "consultations"
+    const isConsultationsCell = day === "consultations";
+    if (!isConsultationsCell) {
+      const dayNum = Number(day);
+      if (!Number.isInteger(dayNum) || dayNum < 1 || dayNum > 31) {
+        res.status(400).json({ success: false, message: "رقم اليوم غير صالح (1-31)" });
+        return;
+      }
     }
 
     // Validate value
-    if (!isValidCellValue(value)) {
-      res.status(400).json({ success: false, message: "القيمة يجب أن تكون 0 أو 0.5 أو 1" });
-      return;
+    if (isConsultationsCell) {
+      const valNum = Number(value);
+      if (isNaN(valNum) || valNum < 0 || valNum > 20 || (valNum * 2) % 1 !== 0) {
+        res.status(400).json({ success: false, message: "القيمة غير صالحة للاستشارات (0-20 بزيادة 0.5)" });
+        return;
+      }
+    } else {
+      if (!isValidCellValue(value)) {
+        res.status(400).json({ success: false, message: "القيمة يجب أن تكون 0 أو 0.5 أو 1" });
+        return;
+      }
     }
 
     const userId = req.user?.id?.toString() ?? "unknown";
     const displayName = req.user?.displayName ?? "Unknown";
 
     // PERFORMANCE: update only the specific cell using dot notation
-    const cellPath = `data.${program}.${monthNum}.${dayNum}`;
+    const cellPath = `data.${program}.${monthNum}.${day}`;
 
     await PlannedTimetable.findOneAndUpdate(
       { fiscalYear },

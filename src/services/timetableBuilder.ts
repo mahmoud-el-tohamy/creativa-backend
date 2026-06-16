@@ -82,6 +82,7 @@ export async function rebuildTimetableSnapshot(
   type ProgramMap = Partial<Record<TimetableProgram, DayMap>>;
   const monthSessionMap: Record<string, ProgramMap> = {};
   const monthConsultationMap: Record<string, Record<string, Set<number>>> = {};
+  const monthConsultationTotalMap: Record<string, Record<string, number>> = {};
 
   for (const session of sessions) {
     if (session.programName === "Incubation") continue;
@@ -90,21 +91,25 @@ export async function rebuildTimetableSnapshot(
     const day = d.getDate();
     const prog = session.timetableProgram as TimetableProgram;
 
-    if (!monthSessionMap[key]) monthSessionMap[key] = {};
-    if (!monthSessionMap[key][prog]) monthSessionMap[key][prog] = {};
-
-    const existing = monthSessionMap[key][prog]![day] ?? 0;
-    monthSessionMap[key][prog]![day] = existing + session.dayValue;
-
     if (session.type === "Consultation") {
       if (!monthConsultationMap[key]) monthConsultationMap[key] = {};
       if (!monthConsultationMap[key][prog]) monthConsultationMap[key][prog] = new Set();
       monthConsultationMap[key][prog].add(day);
+
+      if (!monthConsultationTotalMap[key]) monthConsultationTotalMap[key] = {};
+      if (!monthConsultationTotalMap[key][prog]) monthConsultationTotalMap[key][prog] = 0;
+      monthConsultationTotalMap[key][prog] += session.dayValue;
+    } else {
+      if (!monthSessionMap[key]) monthSessionMap[key] = {};
+      if (!monthSessionMap[key][prog]) monthSessionMap[key][prog] = {};
+
+      const existing = monthSessionMap[key][prog]![day] ?? 0;
+      monthSessionMap[key][prog]![day] = existing + session.dayValue;
     }
   }
 
   // 4. Build IMonthData array
-  type ProgramDayMapObj = { monthTotal: number } & Record<number, number>;
+  type ProgramDayMapObj = { monthTotal: number; consultationTotal?: number } & Record<number, number>;
   type ProgramsObj = Record<TimetableProgram, ProgramDayMapObj>;
 
   const monthsData: IMonthData[] = fyMonths.map(({ monthIndex, year }, fyPos) => {
@@ -118,7 +123,7 @@ export async function rebuildTimetableSnapshot(
     for (const prog of TIMETABLE_PROGRAMS) {
       const dayMap = programLookup[prog] ?? {};
       let monthTotal = 0;
-      const progEntry: ProgramDayMapObj = { monthTotal: 0 };
+      const progEntry: ProgramDayMapObj = { monthTotal: 0, consultationTotal: 0 };
 
       for (let day = 1; day <= daysInMonth; day++) {
         if (dayMap[day] !== undefined && dayMap[day] > 0) {
@@ -126,15 +131,20 @@ export async function rebuildTimetableSnapshot(
           monthTotal += dayMap[day];
         }
       }
-      progEntry.monthTotal = monthTotal;
-      monthlyDays += monthTotal;
+
+      const consTotalLookup = monthConsultationTotalMap[key] ?? {};
+      const consultationTotal = consTotalLookup[prog] ?? 0;
+
+      progEntry.consultationTotal = consultationTotal;
+      progEntry.monthTotal = monthTotal + consultationTotal;
+      monthlyDays += progEntry.monthTotal;
       programs[prog] = progEntry;
     }
 
     const consLookup = monthConsultationMap[key] ?? {};
     const consultations: Record<string, number[]> = {};
     for (const [p, daysSet] of Object.entries(consLookup)) {
-      consultations[p] = Array.from(daysSet);
+      consultations[p] = Array.from(daysSet).sort((a, b) => a - b);
     }
 
     return {

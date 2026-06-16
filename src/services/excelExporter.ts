@@ -260,7 +260,8 @@ export async function exportTimetable(fiscalYear: string): Promise<Buffer> {
     { wch: 6 },
     { wch: 22 },
     ...Array(31).fill({ wch: 3.5 }),
-    { wch: 10 },
+    { wch: 12 }, // Consultations
+    { wch: 10 }, // Total Days
     { wch: 24 },
     { wch: 3 },
     { wch: 14 },
@@ -292,7 +293,7 @@ export async function exportTimetable(fiscalYear: string): Promise<Buffer> {
       alignment: { horizontal: "center", vertical: "center" }
     }
   };
-  ws["!merges"].push({ s: { r: currentRow, c: 0 }, e: { r: currentRow, c: 34 } });
+  ws["!merges"].push({ s: { r: currentRow, c: 0 }, e: { r: currentRow, c: 35 } });
   ws["!rows"] = [];
   ws["!rows"][currentRow] = { hpx: 22 };
   currentRow++;
@@ -316,6 +317,15 @@ export async function exportTimetable(fiscalYear: string): Promise<Buffer> {
   }
   
   ws[cellAddr(currentRow, 33)] = {
+    v: "Consultations",
+    t: "s",
+    s: {
+      font: { bold: true, color: { rgb: "FFFFFF" } },
+      fill: { fgColor: { rgb: HEADER_FILL } },
+      alignment: { horizontal: "center" }
+    }
+  };
+  ws[cellAddr(currentRow, 34)] = {
     v: "Total Days",
     t: "s",
     s: {
@@ -362,7 +372,8 @@ export async function exportTimetable(fiscalYear: string): Promise<Buffer> {
         }
       };
     }
-    ws[cellAddr(currentRow, 33)] = { v: "Total Days", t: "s", s: { alignment: { horizontal: "center" }, font: { bold: true, sz: 8 } } };
+    ws[cellAddr(currentRow, 33)] = { v: "Consultations", t: "s", s: { alignment: { horizontal: "center" }, font: { bold: true, sz: 8 } } };
+    ws[cellAddr(currentRow, 34)] = { v: "Total Days", t: "s", s: { alignment: { horizontal: "center" }, font: { bold: true, sz: 8 } } };
     ws["!rows"][currentRow] = { hpx: 14 };
     currentRow++;
 
@@ -457,11 +468,29 @@ export async function exportTimetable(fiscalYear: string): Promise<Buffer> {
         };
       }
 
-      const totalCellAddr = cellAddr(progRow, 33);
+      const progData = monthData.programs[prog] as any;
+      const consultationTotal = progData ? (progData.consultationTotal || 0) : 0;
+      ws[cellAddr(progRow, 33)] = {
+        v: consultationTotal > 0 ? consultationTotal : "",
+        t: consultationTotal > 0 ? "n" : "s",
+        s: {
+          font: { bold: true, sz: 8 },
+          fill: { fgColor: { rgb: consultationTotal > 0 ? "E8D5F5" : "FFFFFF" } },
+          alignment: { horizontal: "center" },
+          border: {
+            top: { style: "thin", color: { rgb: "E0E0E0" } },
+            bottom: { style: "thin", color: { rgb: "E0E0E0" } },
+            left: { style: "thin", color: { rgb: "E0E0E0" } },
+            right: { style: "thin", color: { rgb: "E0E0E0" } },
+          }
+        }
+      };
+
+      const totalCellAddr = cellAddr(progRow, 34);
       monthTotalMap[`${prog}_${mIdx}`] = totalCellAddr;
       ws[totalCellAddr] = {
         t: "n",
-        f: `SUM(C${progRow + 1}:AG${progRow + 1})`,
+        f: `SUM(C${progRow + 1}:AH${progRow + 1})`,
         s: {
           font: { bold: true, sz: 9 },
           fill: { fgColor: { rgb: progStyle.light } },
@@ -474,7 +503,6 @@ export async function exportTimetable(fiscalYear: string): Promise<Buffer> {
     }
 
     const subRow = currentRow;
-    // FIXED: FIX 5 — use TIMETABLE_PROGRAMS.length instead of hardcoded 5 (now 8 rows)
     const progCount = TIMETABLE_PROGRAMS.length;
     for (let d = 1; d <= 31; d++) {
       const colIndex = 1 + d;
@@ -497,12 +525,12 @@ export async function exportTimetable(fiscalYear: string): Promise<Buffer> {
     ws[cellAddr(subRow, 33)] = {
       t: "n",
       f: `SUM(AH${subRow - progCount + 1}:AH${subRow})`,
-      s: { font: { bold: true }, fill: { fgColor: { rgb: "C6EFCE" } }, alignment: { horizontal: "right" } }
+      s: { font: { bold: true }, fill: { fgColor: { rgb: "C6EFCE" } }, alignment: { horizontal: "center" } }
     };
     ws[cellAddr(subRow, 34)] = {
       t: "n",
-      f: `SUM(AH${subRow - progCount + 1}:AH${subRow})`,
-      s: { font: { bold: true }, fill: { fgColor: { rgb: "C6EFCE" } }, alignment: { horizontal: "center" } }
+      f: `SUM(AI${subRow - progCount + 1}:AI${subRow})`,
+      s: { font: { bold: true }, fill: { fgColor: { rgb: "C6EFCE" } }, alignment: { horizontal: "right" } }
     };
     ws["!rows"][currentRow] = { hpx: 14 };
     currentRow++;
@@ -525,7 +553,7 @@ export async function exportTimetable(fiscalYear: string): Promise<Buffer> {
       allMonthlyTotals.push(monthTotalMap[`${prog}_${m}`]);
     }
   }
-  ws[cellAddr(currentRow, 33)] = {
+  ws[cellAddr(currentRow, 34)] = {
     t: "n",
     f: `SUM(${allMonthlyTotals.join(",")})`,
     s: { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: HEADER_FILL } }, alignment: { horizontal: "right" } }
@@ -552,7 +580,7 @@ export async function exportTimetable(fiscalYear: string): Promise<Buffer> {
     for (let m = 0; m < 12; m++) {
       monthlyCellList.push(monthTotalMap[`${prog}_${m}`]);
     }
-    const annualTotalCellAddr = cellAddr(progRow, 33);
+    const annualTotalCellAddr = cellAddr(progRow, 34);
     annualTotalMap[prog] = annualTotalCellAddr;
 
     ws[annualTotalCellAddr] = {
