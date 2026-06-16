@@ -1,5 +1,6 @@
 import { TrainingSession, getFiscalYear, TIMETABLE_PROGRAMS, TimetableProgram } from "../models/TrainingSession";
 import { TimetableSnapshot, IMonthData, IAnnualTotal, IQuarterlyData } from "../models/TimetableSnapshot";
+import { PlannedTimetable } from "../models/PlannedTimetable";
 
 // ─── Arabic month names in fiscal-year order ─────────────────────────────────
 // Fiscal year: May(Y), Jun(Y), Jul(Y), Aug(Y), Sep(Y), Oct(Y), Nov(Y), Dec(Y),
@@ -83,6 +84,9 @@ export async function rebuildTimetableSnapshot(
   const monthSessionMap: Record<string, ProgramMap> = {};
   const monthConsultationMap: Record<string, Record<string, Set<number>>> = {};
   const monthConsultationTotalMap: Record<string, Record<string, number>> = {};
+
+  // Fetch the planned timetable for this fiscal year to populate targetDays
+  const plan = await PlannedTimetable.findOne({ fiscalYear }).lean();
 
   for (const session of sessions) {
     if (session.programName === "Incubation") continue;
@@ -188,11 +192,13 @@ export async function rebuildTimetableSnapshot(
     const q3 = quarterMap.Q3[prog];
     const q4 = quarterMap.Q4[prog];
     const totalDays = q1 + q2 + q3 + q4;
+    const targetDays = plan?.programTotals?.[prog]?.total ?? 0;
+    const completionPct = targetDays > 0 ? (totalDays / targetDays) * 100 : 0;
     return {
       program: prog,
       totalDays,
-      targetDays: 0,
-      completionPct: 0,
+      targetDays,
+      completionPct,
       q1,
       q2,
       q3,
