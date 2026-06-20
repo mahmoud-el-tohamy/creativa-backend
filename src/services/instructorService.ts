@@ -70,6 +70,7 @@ export interface InstructorSessionRow {
   unitRate: number;
   sessionAmount: number;
   isConsultation: boolean;
+  isPaid: boolean;
 }
 
 export interface InstructorDashboardData {
@@ -89,6 +90,13 @@ export interface InstructorDashboardData {
 
   programBreakdown: {
     program: string;
+    hours: number;
+    sessions: number;
+    totalAmount: number;
+  }[];
+
+  typeBreakdown: {
+    type: string;
     hours: number;
     sessions: number;
     totalAmount: number;
@@ -176,9 +184,14 @@ export async function getInstructorDashboard(
   const hourlyConsultationRate = instructor.hourlyConsultationRate;
 
   const sessions: InstructorSessionRow[] = rawSessions.map((s) => {
-    const isConsultation = (s.programName as string) === "Consultation & Mentorship";
-    const unitRate = isConsultation ? hourlyConsultationRate : hourlyTrainingRate;
-    const sessionAmount = Math.round(s.hours * unitRate * 100) / 100;
+    const isConsultation = (s.programName as string) === "Consultation & Mentorship" || s.type === "Consultation";
+    let unitRate = isConsultation ? hourlyConsultationRate : hourlyTrainingRate;
+    let sessionAmount = Math.round(s.hours * unitRate * 100) / 100;
+
+    if (s.isPaid === false) {
+      unitRate = 0;
+      sessionAmount = 0;
+    }
 
     return {
       _id: String(s._id),
@@ -195,6 +208,7 @@ export async function getInstructorDashboard(
       unitRate,
       sessionAmount,
       isConsultation,
+      isPaid: s.isPaid ?? true,
     };
   });
 
@@ -227,6 +241,31 @@ export async function getInstructorDashboard(
     })
   );
 
+  const typeMap = new Map<string, { hours: number; sessions: number; totalAmount: number }>();
+  for (const s of sessions) {
+    const existing = typeMap.get(s.type);
+    if (existing) {
+      existing.hours += s.hours;
+      existing.sessions += 1;
+      existing.totalAmount += s.sessionAmount;
+    } else {
+      typeMap.set(s.type, {
+        hours: s.hours,
+        sessions: 1,
+        totalAmount: s.sessionAmount,
+      });
+    }
+  }
+
+  const typeBreakdown = Array.from(typeMap.entries()).map(
+    ([type, data]) => ({
+      type,
+      hours: Math.round(data.hours * 100) / 100,
+      sessions: data.sessions,
+      totalAmount: Math.round(data.totalAmount * 100) / 100,
+    })
+  );
+
   // 6. Sum totals
   const periodTotalAmount = sessions.reduce((acc, s) => acc + s.sessionAmount, 0);
   const consultationAmount = sessions
@@ -249,6 +288,7 @@ export async function getInstructorDashboard(
     onlinePct,
     offlinePct,
     programBreakdown,
+    typeBreakdown,
     sessions,
     periodTotalAmount: Math.round(periodTotalAmount * 100) / 100,
     consultationAmount: Math.round(consultationAmount * 100) / 100,

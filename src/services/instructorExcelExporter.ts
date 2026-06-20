@@ -668,11 +668,16 @@ export async function exportAllInstructorSessions(
     const dailyTrainingRate = instructor?.dailyTrainingRate || 0;
     const dailyConsultationRate = instructor?.dailyConsultationRate || 0;
 
-    const isConsultation = (s.programName as string) === "Consultation & Mentorship";
+    const isConsultation = (s.programName as string) === "Consultation & Mentorship" || s.type === "Consultation";
     const isHackathon = (s.programName as string) === "Hackathons / Competitions";
     const unitRate = isConsultation ? hourlyConsultationRate : hourlyTrainingRate;
-    const sessionAmount = Math.round(s.hours * unitRate * 100) / 100;
-    const dailyRate = isConsultation ? dailyConsultationRate : dailyTrainingRate;
+    let sessionAmount = Math.round(s.hours * unitRate * 100) / 100;
+    let dailyRate = isConsultation ? dailyConsultationRate : dailyTrainingRate;
+
+    if (s.isPaid === false) {
+      sessionAmount = 0;
+      dailyRate = 0;
+    }
 
     // Row fill color based on type
     let fillRgb = i % 2 === 0 ? "FFFFFF" : TEAL_LIGHT;
@@ -902,9 +907,15 @@ export async function exportFilteredFinancials(query: any, label: string): Promi
     const isConsultation = (s.programName as string) === "Consultation & Mentorship" || s.type === "Consultation";
     const isHackathon = (s.programName as string) === "Hackathons / Competitions";
     const unitRate = isConsultation ? hourlyConsultationRate : hourlyTrainingRate;
-    const sessionAmount = Math.round(s.hours * unitRate * 100) / 100;
-    const dailyRate = isConsultation ? dailyConsultationRate : dailyTrainingRate;
-    const dailyTotal = s.dayValue * dailyRate;
+    let sessionAmount = Math.round(s.hours * unitRate * 100) / 100;
+    let dailyRate = isConsultation ? dailyConsultationRate : dailyTrainingRate;
+    let dailyTotal = s.dayValue * dailyRate;
+
+    if (s.isPaid === false) {
+      sessionAmount = 0;
+      dailyRate = 0;
+      dailyTotal = 0;
+    }
 
     // Row fill color based on type
     let fillRgb = i % 2 === 0 ? "FFFFFF" : TEAL_LIGHT;

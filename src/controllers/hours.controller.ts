@@ -54,6 +54,7 @@ const sessionSchema = Joi.object({
   // FIXED: FIX 4 — both URL fields explicitly present and optional
   evaluationReportUrl: Joi.string().uri().optional().allow("", null).default(""),
   trainingReportUrl: Joi.string().uri().optional().allow("", null).default(""),
+  isPaid: Joi.boolean().default(true),
 });
 
 const importSessionSchema = sessionSchema.keys({
@@ -122,7 +123,7 @@ export const listSessions = async (req: Request, res: Response, next: NextFuncti
 
 export const createSession = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { error, value } = sessionSchema.validate(req.body, { abortEarly: false });
+    const { error, value } = sessionSchema.validate(req.body, { abortEarly: false, allowUnknown: true });
     if (error) {
       const errors = error.details.map((d) => ({ field: d.path.join("."), message: d.message }));
       res.status(400).json({ success: false, message: "بيانات غير صالحة", errors });
@@ -168,7 +169,7 @@ export const createSession = async (req: Request, res: Response, next: NextFunct
 export const updateSession = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { id } = req.params;
-    const { error, value } = sessionSchema.validate(req.body, { abortEarly: false });
+    const { error, value } = sessionSchema.validate(req.body, { abortEarly: false, allowUnknown: true });
     if (error) {
       const errors = error.details.map((d) => ({ field: d.path.join("."), message: d.message }));
       res.status(400).json({ success: false, message: "بيانات غير صالحة", errors });
@@ -420,6 +421,7 @@ interface ImportedRow {
   type: "Training" | "Awareness Event" | "Incubation" | "Consultation";
   evaluationReportUrl: string;
   trainingReportUrl: string;
+  isPaid: boolean;
   createdBy: Types.ObjectId;
   createdByName: string;
 }

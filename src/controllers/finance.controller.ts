@@ -76,9 +76,13 @@ export const getInstructorFinancials = async (req: Request, res: Response) => {
     const allData = sessions.map((session: any) => {
       const instructor = session.instructorId || {};
       const isConsultation = session.type === "Consultation" || session.type === "Consultation & Mentorship";
-      const dailyRate = isConsultation
+      let dailyRate = isConsultation
         ? (instructor.dailyConsultationRate || 0)
         : (instructor.dailyTrainingRate || 0);
+
+      if (session.isPaid === false) {
+        dailyRate = 0;
+      }
 
       const totalCost = session.dayValue * dailyRate;
 
@@ -95,6 +99,7 @@ export const getInstructorFinancials = async (req: Request, res: Response) => {
         totalCost: totalCost,
         cvLink: instructor.cvLink || "",
         reportLink: session.trainingReportUrl || session.evaluationReportUrl || "",
+        isPaid: session.isPaid ?? true,
       };
     });
 

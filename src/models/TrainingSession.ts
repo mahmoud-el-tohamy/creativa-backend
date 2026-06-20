@@ -90,6 +90,7 @@ export interface ITrainingSession extends Document {
   type: "Training" | "Awareness Event" | "Incubation" | "Consultation";
   evaluationReportUrl: string;
   trainingReportUrl: string;
+  isPaid: boolean;
 
   // Computed fields (set by pre-save hook)
   dayValue: number;
@@ -119,6 +120,7 @@ const trainingSessionSchema = new Schema<ITrainingSession>(
     type: { type: String, enum: ["Training", "Awareness Event", "Incubation", "Consultation"], required: true },
     evaluationReportUrl: { type: String, default: "" },
     trainingReportUrl: { type: String, default: "" },
+    isPaid: { type: Boolean, default: true },
 
     // Computed — auto-populated by pre-save hook
     dayValue: { type: Number, default: 0.5 },
