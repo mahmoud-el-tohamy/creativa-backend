@@ -798,3 +798,235 @@ export async function exportAllInstructorSessions(
   XlsxStyle.utils.book_append_sheet(wb, ws, "جلسات المدربين");
   return XlsxStyle.write(wb, { type: "buffer", bookType: "xlsx", cellStyles: true }) as Buffer;
 }
+
+// ─── EXPORT 3: Financial Tracking (Filtered) ───────────────────────────────────
+
+export async function exportFilteredFinancials(query: any, label: string): Promise<Buffer> {
+  const rawSessions = await TrainingSession.find(query)
+    .sort({ date: 1 })
+    .lean();
+
+  const instructorIds = [...new Set(rawSessions.map(s => s.instructorId?.toString()))].filter(Boolean) as string[];
+  const instructors = await Instructor.find({ _id: { $in: instructorIds } });
+  
+  const instructorMap = new Map();
+  for (const inst of instructors) {
+    instructorMap.set(inst._id.toString(), inst);
+  }
+
+  const wb = XlsxStyle.utils.book_new();
+  const ws: Record<string, unknown> = {};
+  ws["!merges"] = [];
+  ws["!rows"] = [];
+  ws["!sheetView"] = [{ rightToLeft: true }];
+
+  ws["!cols"] = [
+    { wch: 6 },  // رقم
+    { wch: 14 }, // تاريخ التدريب من
+    { wch: 14 }, // تاريخ التدريب الى
+    { wch: 14 }, // عدد الايام التدريبية
+    { wch: 18 }, // نوع التدريب
+    { wch: 28 }, // اسم التدريب
+    { wch: 22 }, // البرنامج التدريبي
+    { wch: 14 }, // عدد الحضور
+    { wch: 16 }, // تاريخ اول وظيفة
+    { wch: 22 }, // اسم المدرب
+    { wch: 14 }, // وحدة القياس
+    { wch: 22 }, // تكلفة اليوم التدريبي
+    { wch: 22 }, // اجمالي اليوم التدريبي
+    { wch: 30 }, // لينك السيرة الذاتية
+    { wch: 30 }, // لينك تقرير البرنامج التدريبي
+  ];
+
+  // ── Title Row ──
+  const titleCell = cellAddr(0, 0);
+  ws[titleCell] = {
+    v: `جلسات الفترة — ${label}`,
+    t: "s",
+    s: {
+      font: { bold: true, sz: 13, color: { rgb: HEADER_TEXT } },
+      fill: { fgColor: { rgb: TEAL_FILL } },
+      alignment: { horizontal: "center", vertical: "center" },
+    },
+  };
+  (ws["!merges"] as unknown[]).push({ s: { r: 0, c: 0 }, e: { r: 0, c: 14 } });
+  (ws["!rows"] as unknown[])[0] = { hpx: 28 };
+
+  // ── Headers Row ──
+  const sessionHeaders = [
+    "رقم",
+    "تاريخ التدريب من",
+    "تاريخ التدريب الى",
+    "عدد الايام التدريبية",
+    "نوع التدريب",
+    "اسم التدريب",
+    "البرنامج التدريبي",
+    "عدد الحضور",
+    "تاريخ اول وظيفة",
+    "اسم المدرب",
+    "وحدة القياس",
+    "تكلفة اليوم التدريبي",
+    "اجمالي اليوم التدريبي",
+    "لينك السيرة الذاتية",
+    "لينك تقرير البرنامج التدريبي",
+  ];
+
+  for (let c = 0; c < sessionHeaders.length; c++) {
+    ws[cellAddr(1, c)] = {
+      v: sessionHeaders[c],
+      t: "s",
+      s: {
+        font: { bold: true, sz: 10, color: { rgb: HEADER_TEXT } },
+        fill: { fgColor: { rgb: TEAL_FILL } },
+        alignment: { horizontal: "center", vertical: "center", wrapText: true },
+        border: thinBorder,
+      },
+    };
+  }
+  (ws["!rows"] as unknown[])[1] = { hpx: 22 };
+
+  // ── Data Rows ──
+  const dataStartRow = 2;
+  let r = dataStartRow;
+
+  for (let i = 0; i < rawSessions.length; i++) {
+    const s = rawSessions[i];
+    const instId = s.instructorId?.toString();
+    const instructor = instId ? instructorMap.get(instId) : null;
+    
+    const hourlyTrainingRate = instructor?.hourlyTrainingRate || 0;
+    const hourlyConsultationRate = instructor?.hourlyConsultationRate || 0;
+    const dailyTrainingRate = instructor?.dailyTrainingRate || 0;
+    const dailyConsultationRate = instructor?.dailyConsultationRate || 0;
+
+    const isConsultation = (s.programName as string) === "Consultation & Mentorship" || s.type === "Consultation";
+    const isHackathon = (s.programName as string) === "Hackathons / Competitions";
+    const unitRate = isConsultation ? hourlyConsultationRate : hourlyTrainingRate;
+    const sessionAmount = Math.round(s.hours * unitRate * 100) / 100;
+    const dailyRate = isConsultation ? dailyConsultationRate : dailyTrainingRate;
+    const dailyTotal = s.dayValue * dailyRate;
+
+    // Row fill color based on type
+    let fillRgb = i % 2 === 0 ? "FFFFFF" : TEAL_LIGHT;
+    if (isConsultation) fillRgb = "FFF8E1";
+    if (isHackathon && sessionAmount === 0) fillRgb = "F5F5F5";
+
+    const baseStyle = {
+      fill: { fgColor: { rgb: fillRgb } },
+      border: thinBorder,
+      alignment: { vertical: "center" },
+    };
+
+    const centerStyle = {
+      ...baseStyle,
+      alignment: { horizontal: "center" as const, vertical: "center" as const },
+    };
+
+    ws[cellAddr(r, 0)] = { v: i + 1, t: "n", s: centerStyle };
+    ws[cellAddr(r, 1)] = { v: formatDate(new Date(s.date)), t: "s", s: centerStyle };
+    ws[cellAddr(r, 2)] = { v: formatDate(new Date(s.date)), t: "s", s: centerStyle };
+    ws[cellAddr(r, 3)] = { v: s.dayValue, t: "n", z: "0.0", s: centerStyle };
+    ws[cellAddr(r, 4)] = { v: s.type, t: "s", s: baseStyle };
+    ws[cellAddr(r, 5)] = { v: s.sessionName, t: "s", s: baseStyle };
+    ws[cellAddr(r, 6)] = { v: s.programName, t: "s", s: baseStyle };
+    ws[cellAddr(r, 7)] = { v: s.attendeesCount, t: "n", s: centerStyle };
+    ws[cellAddr(r, 8)] = {
+      v: instructor?.graduationYear ?? "",
+      t: instructor?.graduationYear ? "n" : "s",
+      s: centerStyle,
+    };
+    ws[cellAddr(r, 9)] = { v: instructor ? instructor.name : (s.instructorName || "غير معروف"), t: "s", s: baseStyle };
+    ws[cellAddr(r, 10)] = { v: s.hours, t: "n", z: "0.0", s: centerStyle };
+    ws[cellAddr(r, 11)] = { v: dailyRate, t: "n", z: "#,##0.00", s: centerStyle };
+    ws[cellAddr(r, 12)] = { v: dailyTotal, t: "n", z: "#,##0.00", s: centerStyle };
+
+    // لينك السيرة الذاتية
+    if (instructor?.cvLink) {
+      ws[cellAddr(r, 13)] = {
+        v: instructor.cvLink,
+        t: "s",
+        l: { Target: instructor.cvLink },
+        s: { ...baseStyle, font: { color: { rgb: "0563C1" }, underline: true } },
+      };
+    } else {
+      ws[cellAddr(r, 13)] = { v: "", t: "s", s: baseStyle };
+    }
+
+    // لينك تقرير البرنامج
+    const reportUrl = s.trainingReportUrl || s.evaluationReportUrl;
+    if (reportUrl) {
+      ws[cellAddr(r, 14)] = {
+        v: reportUrl,
+        t: "s",
+        l: { Target: reportUrl },
+        s: { ...baseStyle, font: { color: { rgb: "0563C1" }, underline: true } },
+      };
+    } else {
+      ws[cellAddr(r, 14)] = { v: "", t: "s", s: baseStyle };
+    }
+
+    (ws["!rows"] as unknown[])[r] = { hpx: 18 };
+    r++;
+  }
+
+  // ── Totals Row ──
+  if (rawSessions.length > 0) {
+    const totalsStyle = {
+      font: { bold: true },
+      fill: { fgColor: { rgb: "E8F5E9" } },
+      border: thinBorder,
+      alignment: { horizontal: "center" as const, vertical: "center" as const },
+    };
+
+    const dataEnd = r; // exclusive
+    const dataStartRef = dataStartRow + 1; // 1-based Excel row
+
+    ws[cellAddr(r, 0)] = { v: "الإجمالي", t: "s", s: { ...totalsStyle, alignment: { horizontal: "right" as const, vertical: "center" as const } } };
+    ws[cellAddr(r, 1)] = { v: "", t: "s", s: totalsStyle };
+    ws[cellAddr(r, 2)] = { v: "", t: "s", s: totalsStyle };
+
+    // SUM عدد الأيام
+    ws[cellAddr(r, 3)] = {
+      t: "n",
+      f: `SUM(${colLetter(3)}${dataStartRef}:${colLetter(3)}${dataEnd})`,
+      z: "0.0",
+      s: totalsStyle,
+    };
+
+    ws[cellAddr(r, 4)] = { v: "", t: "s", s: totalsStyle };
+    ws[cellAddr(r, 5)] = { v: "", t: "s", s: totalsStyle };
+    ws[cellAddr(r, 6)] = { v: "", t: "s", s: totalsStyle };
+
+    // SUM عدد الحضور
+    ws[cellAddr(r, 7)] = {
+      t: "n",
+      f: `SUM(${colLetter(7)}${dataStartRef}:${colLetter(7)}${dataEnd})`,
+      s: totalsStyle,
+    };
+
+    ws[cellAddr(r, 8)] = { v: "", t: "s", s: totalsStyle };
+    ws[cellAddr(r, 9)] = { v: "", t: "s", s: totalsStyle };
+    ws[cellAddr(r, 10)] = { v: "", t: "s", s: totalsStyle };
+    ws[cellAddr(r, 11)] = { v: "", t: "s", s: totalsStyle };
+
+    // SUM الإجمالي (اجمالي اليوم)
+    ws[cellAddr(r, 12)] = {
+      t: "n",
+      f: `SUM(${colLetter(12)}${dataStartRef}:${colLetter(12)}${dataEnd})`,
+      z: "#,##0.00",
+      s: totalsStyle,
+    };
+
+    ws[cellAddr(r, 13)] = { v: "", t: "s", s: totalsStyle };
+    ws[cellAddr(r, 14)] = { v: "", t: "s", s: totalsStyle };
+
+    (ws["!rows"] as unknown[])[r] = { hpx: 20 };
+    r++;
+  }
+
+  ws["!ref"] = rangeAddr(0, 0, Math.max(r - 1, dataStartRow), 14);
+  ws["!freeze"] = { xSplit: 0, ySplit: 2, topLeftCell: "A3" };
+
+  XlsxStyle.utils.book_append_sheet(wb, ws, "جلسات المدربين");
+  return XlsxStyle.write(wb, { type: "buffer", bookType: "xlsx", cellStyles: true }) as Buffer;
+}

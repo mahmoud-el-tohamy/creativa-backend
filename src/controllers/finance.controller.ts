@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { TrainingSession } from "../models/TrainingSession";
+import { exportFilteredFinancials } from "../services/instructorExcelExporter";
 
 export const getInstructorFinancials = async (req: Request, res: Response) => {
   try {
@@ -117,5 +118,69 @@ export const getInstructorFinancials = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error in getInstructorFinancials:", error);
     res.status(500).json({ success: false, message: "حدث خطأ في الخادم" });
+  }
+};
+
+export const exportInstructorFinancials = async (req: Request, res: Response) => {
+  try {
+    const { startDate, endDate, instructorName, period, sessionType, programName } = req.query;
+
+    const query: any = {};
+    let finalStartDate: Date | null = null;
+    let finalEndDate: Date | null = null;
+    let label = "كل الأوقات";
+
+    if (period && period !== "all") {
+      const now = new Date();
+      finalEndDate = new Date(now);
+      finalEndDate.setHours(23, 59, 59, 999);
+
+      if (period === "month") {
+        finalStartDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        finalEndDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+        label = `الشهر الحالي`;
+      } else if (period === "3months") {
+        finalStartDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+        label = `آخر 3 أشهر`;
+      } else if (period === "6months") {
+        finalStartDate = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+        label = `آخر 6 أشهر`;
+      } else if (period === "year") {
+        finalStartDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+        label = `آخر سنة`;
+      }
+    } else {
+      if (startDate) finalStartDate = new Date(startDate as string);
+      if (endDate) {
+        finalEndDate = new Date(endDate as string);
+        finalEndDate.setHours(23, 59, 59, 999);
+      }
+      if (startDate && endDate) {
+        label = `من ${new Date(startDate as string).toLocaleDateString("en-GB")} إلى ${new Date(endDate as string).toLocaleDateString("en-GB")}`;
+      } else if (startDate) {
+        label = `من ${new Date(startDate as string).toLocaleDateString("en-GB")}`;
+      } else if (endDate) {
+        label = `إلى ${new Date(endDate as string).toLocaleDateString("en-GB")}`;
+      }
+    }
+
+    if (finalStartDate || finalEndDate) {
+      query.date = {};
+      if (finalStartDate) query.date.$gte = finalStartDate;
+      if (finalEndDate) query.date.$lte = finalEndDate;
+    }
+
+    if (instructorName) query.instructorName = { $regex: instructorName, $options: "i" };
+    if (sessionType && sessionType !== "all") query.type = sessionType;
+    if (programName && programName !== "all") query.programName = programName;
+
+    const buffer = await exportFilteredFinancials(query, label);
+
+    res.setHeader("Content-Disposition", 'attachment; filename="filtered_financials.xlsx"');
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.send(buffer);
+  } catch (error) {
+    console.error("Error in exportInstructorFinancials:", error);
+    res.status(500).json({ success: false, message: "حدث خطأ أثناء التصدير" });
   }
 };

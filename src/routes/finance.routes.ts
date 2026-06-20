@@ -1,12 +1,19 @@
 import { Router } from "express";
 import { authenticate } from "../middleware/auth";
 import { authorize } from "../middleware/authorize";
-import { getInstructorFinancials } from "../controllers/finance.controller";
+import { getInstructorFinancials, exportInstructorFinancials } from "../controllers/finance.controller";
 
 const router = Router();
 
 // Apply protect middleware to all routes
 router.use(authenticate);
+
+// GET /api/finance/export-instructor-sessions
+router.get(
+  "/export-instructor-sessions",
+  authorize("admin", "accountant"),
+  exportInstructorFinancials
+);
 
 // GET /api/finance/instructor-sessions
 router.get(
@@ -14,5 +21,6 @@ router.get(
   authorize("admin", "accountant"),
   getInstructorFinancials
 );
+
 
 export default router;
