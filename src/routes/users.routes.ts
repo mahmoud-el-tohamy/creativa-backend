@@ -4,10 +4,33 @@ import * as UsersController from "../controllers/users.controller";
 import { authenticate } from "../middleware/auth";
 import { authorize } from "../middleware/authorize";
 import { validate } from "../middleware/validate";
+import { upload } from "../middleware/upload";
 
 const router = Router();
 
+// All routes require authentication
 router.use(authenticate);
+
+// ==========================================
+// User Profile Routes (Any authenticated user)
+// ==========================================
+const updateProfileSchema = Joi.object({
+  displayName: Joi.string().min(2).optional(),
+  age: Joi.number().optional(),
+  address: Joi.string().optional(),
+  nationalId: Joi.string().optional(),
+  phone: Joi.string().optional(),
+  password: Joi.string().min(8).optional()
+});
+
+router.get("/profile", UsersController.getProfile);
+router.put("/profile", validate(updateProfileSchema), UsersController.updateProfile);
+router.post("/profile-picture", upload.single("profilePicture"), UsersController.uploadProfilePicture);
+router.delete("/profile-picture", UsersController.deleteProfilePicture);
+
+// ==========================================
+// Admin Only Routes
+// ==========================================
 router.use(authorize("admin"));
 
 const createUserSchema = Joi.object({
@@ -36,8 +59,20 @@ const changeRoleSchema = Joi.object({
   })
 });
 
+const adminUpdateProfileSchema = Joi.object({
+  displayName: Joi.string().min(2).optional(),
+  email: Joi.string().email().optional(),
+  age: Joi.number().optional(),
+  address: Joi.string().optional(),
+  nationalId: Joi.string().optional(),
+  phone: Joi.string().optional(),
+  password: Joi.string().min(8).optional()
+});
+
 router.get("/", UsersController.listUsers);
 router.post("/", validate(createUserSchema), UsersController.createUser);
+router.get("/:id", UsersController.getUser);
+router.put("/:id/profile", validate(adminUpdateProfileSchema), UsersController.adminUpdateProfile);
 router.patch("/:id/role", validate(changeRoleSchema), UsersController.changeRole);
 router.patch("/:id/active", UsersController.toggleActive);
 router.delete("/:id", UsersController.toggleActive); // Treat DELETE as soft delete (toggle active)

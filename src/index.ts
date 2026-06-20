@@ -43,6 +43,8 @@ app.use(
 );
 app.use(express.json());
 app.use(cookieParser());
+import path from "path";
+app.use("/uploads", express.static(path.join(process.cwd(), "public", "uploads")));
 
 if (process.env.NODE_ENV === "development") {
   app.use(morgan("dev"));

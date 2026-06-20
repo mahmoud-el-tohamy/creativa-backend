@@ -205,6 +205,11 @@ export const me = async (req: Request, res: Response, next: NextFunction): Promi
         isActive: user.isActive,
         lastLoginAt: user.lastLoginAt,
         createdAt: user.createdAt,
+        profilePicture: user.profilePicture || null,
+        age: user.age || null,
+        address: user.address || null,
+        nationalId: user.nationalId || null,
+        phone: user.phone || null,
       },
     });
   } catch (error) {

@@ -12,6 +12,8 @@ export interface IAuditLog extends Document {
     | "user_activate"
     | "user_delete"
     | "user_role_change" 
+    | "user_profile_update"
+    | "admin_user_update"
     | "attendance_upload" 
     | "filter_run" 
     | "certificate_generate" 

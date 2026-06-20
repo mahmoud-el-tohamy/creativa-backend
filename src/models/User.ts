@@ -13,6 +13,11 @@ export interface IUser extends Document {
   createdBy: Types.ObjectId | null;
   lastLoginAt: Date | null;
   refreshTokens: string[];
+  age?: number;
+  address?: string;
+  nationalId?: string;
+  phone?: string;
+  profilePicture?: string;
   comparePassword(candidate: string): Promise<boolean>;
 }
 
@@ -30,6 +35,11 @@ const userSchema = new Schema<IUser, IUserModel>(
     createdBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
     lastLoginAt: { type: Date, default: null },
     refreshTokens: { type: [String], default: [] },
+    age: { type: Number },
+    address: { type: String },
+    nationalId: { type: String },
+    phone: { type: String },
+    profilePicture: { type: String },
   },
   { timestamps: true }
 );

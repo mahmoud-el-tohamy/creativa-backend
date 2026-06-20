@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from "express";
 import { User } from "../models/User";
 import { AuditLog } from "../models/AuditLog";
+import fs from "fs";
+import path from "path";
 
 export const listUsers = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -188,6 +190,203 @@ export const hardDeleteUser = async (req: Request, res: Response, next: NextFunc
     });
 
     res.status(200).json({ success: true, message: "تم حذف المستخدم بنجاح" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getUser = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const targetUser = await User.findById(id).select("-refreshTokens -password").lean();
+    if (!targetUser) {
+      res.status(404).json({ success: false, message: "المستخدم غير موجود" });
+      return;
+    }
+    res.status(200).json({ success: true, data: targetUser });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getProfile = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ success: false, message: "غير مصرح" });
+      return;
+    }
+    const targetUser = await User.findById(userId).select("-refreshTokens -password").lean();
+    if (!targetUser) {
+      res.status(404).json({ success: false, message: "المستخدم غير موجود" });
+      return;
+    }
+    res.status(200).json({ success: true, data: targetUser });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateProfile = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ success: false, message: "غير مصرح" });
+      return;
+    }
+
+    const { displayName, age, address, nationalId, phone, password } = req.body;
+    const targetUser = await User.findById(userId);
+
+    if (!targetUser) {
+      res.status(404).json({ success: false, message: "المستخدم غير موجود" });
+      return;
+    }
+
+    if (displayName) targetUser.displayName = displayName;
+    if (age !== undefined) targetUser.age = age;
+    if (address !== undefined) targetUser.address = address;
+    if (nationalId !== undefined) targetUser.nationalId = nationalId;
+    if (phone !== undefined) targetUser.phone = phone;
+    if (password) targetUser.password = password; // pre-save hook handles hashing
+
+    await targetUser.save();
+
+    await AuditLog.create({
+      action: "user_profile_update",
+      performedBy: req.user?.id,
+      performedByName: req.user?.displayName,
+      performedByRole: req.user?.role,
+      targetId: targetUser._id.toString(),
+      targetName: targetUser.displayName,
+      details: `قام المستخدم بتحديث بياناته الشخصية`,
+      ipAddress: req.ip || req.socket.remoteAddress || "unknown",
+    });
+
+    // Return without password
+    const userObj = targetUser.toObject() as any;
+    delete userObj.password;
+    delete userObj.refreshTokens;
+
+    res.status(200).json({ success: true, data: userObj, message: "تم التحديث بنجاح" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const adminUpdateProfile = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { displayName, email, age, address, nationalId, phone, password } = req.body;
+    
+    const targetUser = await User.findById(id);
+
+    if (!targetUser) {
+      res.status(404).json({ success: false, message: "المستخدم غير موجود" });
+      return;
+    }
+
+    if (email && email !== targetUser.email) {
+      const existingUser = await User.findOne({ email });
+      if (existingUser) {
+        res.status(409).json({ success: false, message: "البريد الإلكتروني مستخدم مسبقاً" });
+        return;
+      }
+      targetUser.email = email;
+    }
+
+    if (displayName) targetUser.displayName = displayName;
+    if (age !== undefined) targetUser.age = age;
+    if (address !== undefined) targetUser.address = address;
+    if (nationalId !== undefined) targetUser.nationalId = nationalId;
+    if (phone !== undefined) targetUser.phone = phone;
+    if (password) targetUser.password = password; // pre-save hook handles hashing
+
+    await targetUser.save();
+
+    await AuditLog.create({
+      action: "admin_user_update",
+      performedBy: req.user?.id,
+      performedByName: req.user?.displayName,
+      performedByRole: req.user?.role,
+      targetId: targetUser._id.toString(),
+      targetName: targetUser.displayName,
+      details: `قام الإدمن بتعديل بيانات المستخدم: ${targetUser.displayName}`,
+      ipAddress: req.ip || req.socket.remoteAddress || "unknown",
+    });
+
+    const userObj = targetUser.toObject() as any;
+    delete userObj.password;
+    delete userObj.refreshTokens;
+
+    res.status(200).json({ success: true, data: userObj, message: "تم التحديث بنجاح" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const uploadProfilePicture = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ success: false, message: "غير مصرح" });
+      return;
+    }
+
+    if (!req.file) {
+      res.status(400).json({ success: false, message: "لم يتم إرسال أي صورة" });
+      return;
+    }
+
+    const imageUrl = `/uploads/${req.file.filename}`;
+
+    const targetUser = await User.findById(userId);
+    if (!targetUser) {
+      res.status(404).json({ success: false, message: "المستخدم غير موجود" });
+      return;
+    }
+
+    // Delete old profile picture file from disk if it exists
+    if (targetUser.profilePicture) {
+      const oldFilePath = path.join(process.cwd(), "public", targetUser.profilePicture);
+      if (fs.existsSync(oldFilePath)) {
+        fs.unlink(oldFilePath, () => { /* ignore errors silently */ });
+      }
+    }
+
+    targetUser.profilePicture = imageUrl;
+    await targetUser.save();
+
+    res.status(200).json({ success: true, data: { profilePicture: imageUrl }, message: "تم تحديث الصورة بنجاح" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteProfilePicture = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ success: false, message: "غير مصرح" });
+      return;
+    }
+    const targetUser = await User.findById(userId);
+    if (!targetUser) {
+      res.status(404).json({ success: false, message: "المستخدم غير موجود" });
+      return;
+    }
+
+    // Actually delete the file from disk
+    if (targetUser.profilePicture) {
+      const filePath = path.join(process.cwd(), "public", targetUser.profilePicture);
+      if (fs.existsSync(filePath)) {
+        fs.unlink(filePath, () => { /* ignore errors */ });
+      }
+    }
+
+    targetUser.profilePicture = undefined;
+    await targetUser.save();
+    res.status(200).json({ success: true, message: "تم حذف الصورة بنجاح" });
   } catch (error) {
     next(error);
   }
