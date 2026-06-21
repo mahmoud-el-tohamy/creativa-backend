@@ -431,9 +431,9 @@ export async function exportInstructorSessions(
     const isConsultation = (s.programName as string) === "Consultation & Mentorship";
     const isHackathon = (s.programName as string) === "Hackathons / Competitions";
     const unitRate = isConsultation ? hourlyConsultationRate : hourlyTrainingRate;
-    const sessionAmount = Math.round(s.hours * unitRate * 100) / 100;
     const dailyRate = isConsultation ? instructor.dailyConsultationRate : instructor.dailyTrainingRate;
-    const dailyTotal = s.dayValue * dailyRate;
+    const hourlyRate = dailyRate / 7;
+    const sessionAmount = Math.round(s.hours * hourlyRate * 100) / 100;
 
     // Row fill color based on type
     let fillRgb = i % 2 === 0 ? "FFFFFF" : TEAL_LIGHT;
@@ -670,9 +670,9 @@ export async function exportAllInstructorSessions(
 
     const isConsultation = (s.programName as string) === "Consultation & Mentorship" || s.type === "Consultation";
     const isHackathon = (s.programName as string) === "Hackathons / Competitions";
-    const unitRate = isConsultation ? hourlyConsultationRate : hourlyTrainingRate;
-    let sessionAmount = Math.round(s.hours * unitRate * 100) / 100;
     let dailyRate = isConsultation ? dailyConsultationRate : dailyTrainingRate;
+    let hourlyRate = dailyRate / 7;
+    let sessionAmount = Math.round(s.hours * hourlyRate * 100) / 100;
 
     if (s.isPaid === false) {
       sessionAmount = 0;
@@ -906,13 +906,11 @@ export async function exportFilteredFinancials(query: any, label: string): Promi
 
     const isConsultation = (s.programName as string) === "Consultation & Mentorship" || s.type === "Consultation";
     const isHackathon = (s.programName as string) === "Hackathons / Competitions";
-    const unitRate = isConsultation ? hourlyConsultationRate : hourlyTrainingRate;
-    let sessionAmount = Math.round(s.hours * unitRate * 100) / 100;
     let dailyRate = isConsultation ? dailyConsultationRate : dailyTrainingRate;
-    let dailyTotal = s.dayValue * dailyRate;
+    let hourlyRate = dailyRate / 7;
+    let dailyTotal = Math.round(s.hours * hourlyRate * 100) / 100;
 
     if (s.isPaid === false) {
-      sessionAmount = 0;
       dailyRate = 0;
       dailyTotal = 0;
     }
@@ -920,7 +918,7 @@ export async function exportFilteredFinancials(query: any, label: string): Promi
     // Row fill color based on type
     let fillRgb = i % 2 === 0 ? "FFFFFF" : TEAL_LIGHT;
     if (isConsultation) fillRgb = "FFF8E1";
-    if (isHackathon && sessionAmount === 0) fillRgb = "F5F5F5";
+    if (isHackathon && dailyTotal === 0) fillRgb = "F5F5F5";
 
     const baseStyle = {
       fill: { fgColor: { rgb: fillRgb } },

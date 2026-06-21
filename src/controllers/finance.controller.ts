@@ -84,7 +84,8 @@ export const getInstructorFinancials = async (req: Request, res: Response) => {
         dailyRate = 0;
       }
 
-      const totalCost = session.dayValue * dailyRate;
+      const hourlyRate = dailyRate / 7;
+      const totalCost = hourlyRate * session.hours;
 
       return {
         _id: session._id,
