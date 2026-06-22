@@ -26,9 +26,19 @@ const hashToken = (token: string) => {
 
 export const login = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { email, password } = req.body;
+    const { identifier, password } = req.body;
 
-    const user = await User.findOne({ email }).select("+password");
+    if (!identifier || !password) {
+      res.status(400).json({ success: false, message: "يرجى إدخال البريد الإلكتروني/اسم المستخدم وكلمة المرور" });
+      return;
+    }
+
+    // Allow login by email OR displayName
+    const isEmail = identifier.includes("@");
+    const user = await User.findOne(
+      isEmail ? { email: identifier.toLowerCase().trim() } : { displayName: identifier.trim() }
+    ).select("+password");
+
     if (!user) {
       res.status(401).json({ success: false, message: "بيانات الدخول غير صحيحة" });
       return;
@@ -94,12 +104,18 @@ export const login = async (req: Request, res: Response, next: NextFunction): Pr
         displayName: user.displayName,
         email: user.email,
         role: user.role,
+        profilePicture: user.profilePicture || null,
+        age: user.age || null,
+        address: user.address || null,
+        nationalId: user.nationalId || null,
+        phone: user.phone || null,
       },
     });
   } catch (error) {
     next(error);
   }
 };
+
 
 export const logout = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
