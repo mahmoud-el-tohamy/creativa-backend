@@ -25,7 +25,7 @@ const updateProfileSchema = Joi.object({
 
 router.get("/profile", UsersController.getProfile);
 router.put("/profile", validate(updateProfileSchema), UsersController.updateProfile);
-router.post("/profile-picture", upload.single("profilePicture"), UsersController.uploadProfilePicture);
+router.post("/profile-picture", UsersController.uploadProfilePicture);
 router.delete("/profile-picture", UsersController.deleteProfilePicture);
 
 // ==========================================

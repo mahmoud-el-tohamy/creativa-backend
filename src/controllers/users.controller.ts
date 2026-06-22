@@ -333,12 +333,12 @@ export const uploadProfilePicture = async (req: Request, res: Response, next: Ne
       return;
     }
 
-    if (!req.file) {
-      res.status(400).json({ success: false, message: "لم يتم إرسال أي صورة" });
+    const { imageBase64 } = req.body;
+
+    if (!imageBase64 || !imageBase64.startsWith("data:image")) {
+      res.status(400).json({ success: false, message: "بيانات الصورة غير صالحة" });
       return;
     }
-
-    const imageUrl = `/uploads/${req.file.filename}`;
 
     const targetUser = await User.findById(userId);
     if (!targetUser) {
@@ -346,18 +346,18 @@ export const uploadProfilePicture = async (req: Request, res: Response, next: Ne
       return;
     }
 
-    // Delete old profile picture file from disk if it exists
-    if (targetUser.profilePicture) {
+    // Optional: Delete old disk file if the user had an old file-based avatar
+    if (targetUser.profilePicture && !targetUser.profilePicture.startsWith("data:image")) {
       const oldFilePath = path.join(process.cwd(), "public", targetUser.profilePicture);
       if (fs.existsSync(oldFilePath)) {
         fs.unlink(oldFilePath, () => { /* ignore errors silently */ });
       }
     }
 
-    targetUser.profilePicture = imageUrl;
+    targetUser.profilePicture = imageBase64;
     await targetUser.save();
 
-    res.status(200).json({ success: true, data: { profilePicture: imageUrl }, message: "تم تحديث الصورة بنجاح" });
+    res.status(200).json({ success: true, data: { profilePicture: imageBase64 }, message: "تم تحديث الصورة بنجاح" });
   } catch (error) {
     next(error);
   }
@@ -376,8 +376,8 @@ export const deleteProfilePicture = async (req: Request, res: Response, next: Ne
       return;
     }
 
-    // Actually delete the file from disk
-    if (targetUser.profilePicture) {
+    // Delete the file from disk if it's not base64
+    if (targetUser.profilePicture && !targetUser.profilePicture.startsWith("data:image")) {
       const filePath = path.join(process.cwd(), "public", targetUser.profilePicture);
       if (fs.existsSync(filePath)) {
         fs.unlink(filePath, () => { /* ignore errors */ });
