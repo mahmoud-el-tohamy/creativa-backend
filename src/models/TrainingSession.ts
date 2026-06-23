@@ -1,5 +1,9 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
 import type { IInstructor } from "./Instructor";
+// PERF FIX 4 — static import instead of dynamic import("./Instructor") inside the post-save hook.
+// No circular dependency: Instructor.ts does NOT import from TrainingSession.ts.
+// Impact: Avoids repeated dynamic module resolution overhead on every session.save() call.
+import { Instructor } from "./Instructor";
 
 // ─── Enums & Types ──────────────────────────────────────────────────────────
 
@@ -152,13 +156,23 @@ const SPECIALIZATION_EXCLUDED_PROGRAMS = [
 ] as const;
 
 trainingSessionSchema.post("save", async function () {
+  // PERF FIX 4 — Skip the instructor specialization sync when neither programName nor
+  // instructorId was actually modified. Previously this extra findByIdAndUpdate fired on
+  // EVERY session.save(), including partial updates (e.g. hours-only edits).
+  // Impact: Eliminates the redundant DB write for the common partial-update case.
+  const programOrInstructorChanged =
+    this.isNew ||
+    this.isModified("programName") ||
+    this.isModified("instructorId");
+
+  if (!programOrInstructorChanged) return;
+
   if (
     this.instructorId &&
     this.programName &&
     !(SPECIALIZATION_EXCLUDED_PROGRAMS as readonly string[]).includes(this.programName)
   ) {
-    // Lazy require to avoid circular dependency at module load time
-    const { Instructor } = await import("./Instructor");
+    // Static Instructor import used here (no circular dependency — see import at top of file)
     await (Instructor as mongoose.Model<IInstructor>).findByIdAndUpdate(
       this.instructorId,
       { $addToSet: { specializations: this.programName } },
@@ -173,7 +187,17 @@ trainingSessionSchema.index({ date: 1 });
 trainingSessionSchema.index({ fiscalYear: 1, timetableProgram: 1 });
 trainingSessionSchema.index({ fiscalYear: 1, date: 1 });
 trainingSessionSchema.index({ programName: 1 });
-trainingSessionSchema.index({ instructorId: 1, date: 1 }); // for instructor dashboard queries
+// Used by per-instructor dashboard (getInstructorDashboard): instructorId is the leading filter
+trainingSessionSchema.index({ instructorId: 1, date: 1 });
+// PERF FIX 3 — Used by getAccountantDashboard: queries { date:{$gte,$lte}, instructorId:{$exists,$ne:null} }
+// date-range is the leading filter so date must lead the index. The existing instructorId-first
+// index above handles per-instructor queries; this handles the date-range-first pattern.
+// Impact: Allows the accountant dashboard to use a date-range prefix scan instead of a collection scan.
+trainingSessionSchema.index({ date: 1, instructorId: 1 });
+// PERF FIX 5 — Used by bulk import deduplication $or query: { sessionName, date, instructorId }.
+// date leads because it has the highest cardinality in the triple (most entries eliminated per day match).
+// Impact: Replaces a full collection scan per import with an indexed lookup bounded per date.
+trainingSessionSchema.index({ date: 1, sessionName: 1, instructorId: 1 });
 
 
 // ─── Model ───────────────────────────────────────────────────────────────────

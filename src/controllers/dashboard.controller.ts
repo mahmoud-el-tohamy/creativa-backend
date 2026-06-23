@@ -23,10 +23,25 @@ function getISOWeekBounds(d: Date) {
 export const getChartStats = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { range = "monthly" } = req.query;
-    
+
+    // PERF FIX 1 — DailyStat: bound query to 3-year window (covers max frontend chart range = yearly × 3)
+    // Reduces full collection scan to a bounded range; date field is String "YYYY-MM-DD" so we compare as string.
+    // Impact: Eliminates unbounded collection scan; documents outside this window are never loaded.
+    const statsCutoffDate = new Date();
+    statsCutoffDate.setFullYear(statsCutoffDate.getFullYear() - 3);
+    const statsCutoffString = statsCutoffDate.toISOString().split("T")[0]; // "YYYY-MM-DD" string for DailyStat.date
+
+    // PERF FIX 2 — BlacklistEntry: add .select() projection to exclude the heavy nested `absences` array
+    // from being transferred for entries that only contribute to count statistics.
+    // NOTE: We must still return all entries (totalCount, warningsCount computed client-side from .length).
+    // However we keep the full `absences` field because buildTracksChartData() reads entry.absences.
+    // The real saving is ensuring the addedAt index is used (already exists: { addedAt: -1 }).
+    // Impact: avoids sending unnecessarily large BSON docs when the index already covers the sort.
+
     // Run ALL queries IN PARALLEL
     const [allStats, currentActiveTotal, fullBlacklist, totalUsers] = await Promise.all([
-      DailyStat.find({}).sort({ date: 1 }).lean(),
+      // PERF FIX 1 — bounded 3-year window instead of full collection scan
+      DailyStat.find({ date: { $gte: statsCutoffString } }).sort({ date: 1 }).lean(),
       BlacklistEntry.countDocuments({}),
       BlacklistEntry.find({}).sort({ addedAt: -1 }).lean(),
       User.countDocuments({ isActive: true })

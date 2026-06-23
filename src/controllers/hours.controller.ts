@@ -73,6 +73,7 @@ export const listSessions = async (req: Request, res: Response, next: NextFuncti
       dateTo,
       mode,
       type,
+      search, // PERF FIX 2 — Added search
       page = "1",
       limit = "50",
       sort = "newest",
@@ -89,6 +90,10 @@ export const listSessions = async (req: Request, res: Response, next: NextFuncti
       if (dateFrom) dateQ.$gte = new Date(dateFrom as string);
       if (dateTo) dateQ.$lte = new Date(dateTo as string);
       query.date = dateQ;
+    }
+    // PERF FIX 2 — Implement search filter
+    if (search && typeof search === "string" && search.trim()) {
+      query.sessionName = { $regex: search.trim(), $options: "i" };
     }
 
     let sortObj: Record<string, 1 | -1> = { date: -1 };
