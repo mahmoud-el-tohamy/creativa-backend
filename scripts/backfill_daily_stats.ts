@@ -65,7 +65,7 @@ const runMigration = async () => {
     }
 
     console.log("Saving DailyStats...");
-    for (const [dateString, stats] of dailyStatsMap.entries()) {
+    for (const [dateString, stats] of Array.from(dailyStatsMap.entries())) {
       if (stats.additions > 0 || stats.removals > 0) {
         await DailyStat.create({
           date: dateString,

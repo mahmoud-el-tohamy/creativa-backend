@@ -307,9 +307,17 @@ export const bulkDeleteSessions = async (req: Request, res: Response, next: Next
 
 export const listInstructors = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { includeInactive } = req.query;
+    const { includeInactive, lite } = req.query;
     const query = includeInactive === "true" ? {} : { isActive: true };
-    const instructors = await Instructor.find(query).sort({ name: 1 }).lean();
+
+    // PERF FIX 2 — lite-param fallback for field trimming
+    const isLite = lite === "true";
+    const selectFields = isLite ? "_id name isActive" : undefined;
+
+    let q = Instructor.find(query).sort({ name: 1 });
+    if (selectFields) q = q.select(selectFields);
+    const instructors = await q.lean();
+
     res.status(200).json({ success: true, data: instructors });
   } catch (error) {
     next(error);
