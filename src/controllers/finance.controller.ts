@@ -95,6 +95,7 @@ export const getInstructorFinancials = async (req: Request, res: Response) => {
         sessionName: session.sessionName,
         program: session.programName,
         attendance: session.attendeesCount,
+        instructorId: instructor._id ? instructor._id.toString() : "",
         instructorName: session.instructorName || "بدون مدرب",
         dailyRate: dailyRate,
         totalCost: totalCost,

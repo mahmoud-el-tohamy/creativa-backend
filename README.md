@@ -1,187 +1,142 @@
-# Creativa Training Filter System - Backend
+# Creativa Training Filter System - Backend API
 
-![Node.js](https://img.shields.io/badge/Node.js-43853D?style=for-the-badge&logo=node.js&logoColor=white)
-![Express.js](https://img.shields.io/badge/Express.js-404D59?style=for-the-badge&logo=express&logoColor=white)
-![MongoDB](https://img.shields.io/badge/MongoDB-4EA94B?style=for-the-badge&logo=mongodb&logoColor=white)
-![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+<div align="center">
+  <img src="https://img.shields.io/badge/Node.js-43853D?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js" />
+  <img src="https://img.shields.io/badge/Express.js-404D59?style=for-the-badge&logo=express&logoColor=white" alt="Express" />
+  <img src="https://img.shields.io/badge/MongoDB-4EA94B?style=for-the-badge&logo=mongodb&logoColor=white" alt="MongoDB" />
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white" alt="Vercel" />
+</div>
 
-An enterprise-grade RESTful API backend for **Creativa Innovation Hub - Mansoura**. This service securely powers the frontend operations platform, providing centralized authentication, MongoDB data persistence, and role-based data governance for training operations, candidate filtering, and auditing.
+<br />
+
+An enterprise-grade, high-performance RESTful API backend engineered exclusively for **Creativa Innovation Hub - Mansoura**. This service acts as the secure backbone for operations, providing centralized authentication, robust MongoDB data persistence, automated auditing, and strict role-based data governance for complex workflows like candidate filtering, timetable generation, and financial tracking.
 
 ---
 
 ## 📖 Table of Contents
 
-- [🚀 Overview](#-overview)
-- [✨ Core Features](#-core-features)
-- [🛠️ Tech Stack](#️-tech-stack)
-- [🏗️ Architecture](#️-architecture)
-- [📁 Project Structure](#-project-structure)
-- [🎭 Role-Based Access Control](#-role-based-access-control)
-- [🔐 Environment Variables](#-environment-variables)
-- [🚀 Getting Started](#-getting-started)
-- [📝 Deployment & Security](#-deployment--security)
+- [🚀 Architecture Overview](#-architecture-overview)
+- [✨ Core Capabilities](#-core-capabilities)
+  - [🔐 Security & Identity](#-security--identity)
+  - [👥 Instructors & Financial Management](#-instructors--financial-management)
+  - [🚫 Blacklist & Data Governance](#-blacklist--data-governance)
+  - [⏱️ Hours & Operational Timetables](#️-hours--operational-timetables)
+  - [📝 Immutable Audit Logging](#-immutable-audit-logging)
+- [🛠️ Technology Stack](#️-technology-stack)
+- [🏗️ Project Structure](#️-project-structure)
+- [🎭 Role-Based Access Matrix](#-role-based-access-matrix)
+- [⚙️ Environment Configuration](#️-environment-configuration)
+- [🚀 Local Development](#-local-development)
+- [🌐 Deployment](#-deployment)
 
 ---
 
-## 🚀 Overview
+## 🚀 Architecture Overview
 
-The **Creativa Training Filter System - Backend** is a highly secure, custom Node.js and Express API. It manages all data persistence, user sessions via HttpOnly cookies, and strict role-based access to ensure operational data integrity.
+The backend is built as a highly secure Node.js & Express API, fully typed with TypeScript, and connected to MongoDB via Mongoose. It is optimized to operate seamlessly within Vercel's Serverless environment, ensuring zero-maintenance scaling and high availability.
 
-### Key Value Propositions
-
-- **Total Data Ownership**: Uses a self-hosted or managed MongoDB instance, providing total control over database schemas, indexing, and backups.
-- **Enhanced Security**: Authentication is driven by secure, HttpOnly, SameSite-configured JSON Web Tokens (JWTs). Tokens are never exposed to the client's `localStorage`, nullifying XSS token theft vectors.
-- **Serverless Ready**: Built and configured to deploy seamlessly to Vercel Serverless Functions, ensuring high availability, zero-maintenance scaling, and cost efficiency.
-- **Automated Auditing**: All critical database mutations (user modifications, blacklist updates) automatically generate normalized audit logs using Mongoose lifecycle hooks and controller wrappers.
-- **High-Performance Bulk Operations**: Processes large attendance uploads utilizing optimized MongoDB `$in` queries and parallel execution to resolve N+1 performance bottlenecks.
+### Key Architectural Decisions:
+- **Serverless-First:** Configured natively for Vercel functions (`api/index.ts`).
+- **Base64 Image Architecture:** Completely bypasses traditional file-system limitations (like Vercel's read-only execution environment) by relying on client-side compression and storing profile pictures purely as Base64 strings in MongoDB.
+- **Stateless Authentication:** Relies entirely on `HttpOnly`, `SameSite` JWT cookies for maximum security against XSS attacks.
+- **Algorithmic Optimizations:** Processes massive attendance logs in milliseconds utilizing bulk MongoDB operations and `$in` queries to avoid N+1 issues.
 
 ---
 
-## ✨ Core Features
+## ✨ Core Capabilities
 
-### 🔐 Advanced Authentication
-- **Dual-Token System**: Implements short-lived Access Tokens (15m) and long-lived Refresh Tokens (7d) for robust session security.
-- **HttpOnly Delivery**: Tokens are attached directly to outgoing response cookies, securing them from frontend JavaScript environments.
-- **Rate Limiting**: Built-in, user-aware rate limiting prevents brute-force login attempts and API abuse.
+### 🔐 Security & Identity
+- **Dual-Token System:** Short-lived Access Tokens (15m) paired with sliding-window Refresh Tokens (7d).
+- **HttpOnly Cookie Delivery:** Tokens are attached directly to HTTP response headers, ensuring they never touch client-side `localStorage`.
+- **Intelligent Rate Limiting:** Built-in dynamic rate-limiting mapped to JWT User IDs, neutralizing brute-force and scraping attempts.
 
-### 👥 User Administration
-- **Role Hierarchy**: Supports `admin`, `employee`, and `viewer` roles, mapped to specific API endpoints.
-- **Account State**: Active/Deactivated account toggles allow instant revocation of user access.
+### 👥 Instructors & Financial Management
+- **Centralized Instructor Profiles:** Manage instructor details, external CV links, specialized training tracks, and daily financial rates (Training vs. Consultation).
+- **Financial Analytics:** Computes exact session costs mathematically dynamically based on the session's duration, instructor's daily rates, and the type of session.
+- **Reporting:** Export advanced fiscal reports directly tracking total instructor expenditures across specific months or fiscal years.
 
-### 🚫 Blacklist Governance
-- **Mongoose Indexing**: Enforces uniqueness on National IDs to prevent duplicate blacklist entries.
-- **TTL (Time-To-Live)**: Employs MongoDB TTL indexes to automatically prune expired blacklist entries after their 4-month lifecycle.
-- **Safe Warning Workflows**: Exposes a bulk-check endpoint to preview current trainee warning levels, enabling frontend safety modals before applying punitive actions.
-- **Dynamic Tracks Module**: Fully functional Tracks API to manage available training tracks and attach them to blacklist entries.
+### 🚫 Blacklist & Data Governance
+- **Mongoose Constraints:** National IDs enforce unique compound indexing to absolutely prevent dirty data injection.
+- **Automated TTL Pruning:** Employs MongoDB Time-To-Live (TTL) indexing to automatically destroy blacklist entries exactly 4 months after their creation.
+- **Bulk Safe-Check APIs:** Exposes preview endpoints that allow the frontend to safely check candidate warning levels *before* executing punitive actions.
 
-### ⏱️ Hours & Timetable Tracking
-- **Session Consolidation**: Centralizes training session data with integrated fiscal year calculations, elegantly handling specialized tracking for "Incubation" and "Consultation" events.
-- **Bulk Imports & Deduplication**: Fast Excel parsing pipeline utilizing Mongoose uniqueness logic to gracefully skip duplicate sessions.
-- **Timetable Generation**: Aggregates sessions into complex, color-coded fiscal year timetables with automated snapshot caching, selectively filtering out specialized programs.
-- **Planned Timetable & Comparison**: Stores yearly planned hours and computes real-time comparisons between actual performance and targeted plans.
+### ⏱️ Hours & Operational Timetables
+- **Fiscal Year Calculation:** Programmatically groups training sessions into accurate fiscal year blocks for government reporting.
+- **Planned vs Actual Tracking:** Allows operations to record "Target Hours" for a fiscal year and compare them dynamically against actual accomplished training sessions.
+- **Smart Deduplication:** Bulk-importing thousands of sessions from Excel is protected by upsert logic that safely skips already recorded sessions.
 
-### 🧾 Attendance Sheet Organizer
-- **Excel Formatting Engine**: Uses `xlsx-js-style` to programmatically parse raw Google Forms data and reconstruct it into an advanced, multi-sheet Excel workbook.
-- **Intelligent Grouping**: Automatically groups trainees by Workshop Name and Date, inserts customized yellow session headers, and separates sessions with thick black rows.
-
-### 📝 Audit Logging
-- **Immutable Trail**: Actions like creating users or modifying the blacklist are permanently recorded with the performer's ID, action type, and target metadata.
+### 📝 Immutable Audit Logging
+- Every single critical data mutation (Adding to blacklist, deleting sessions, modifying users) triggers a Mongoose post-hook that permanently logs the action, the performer's ID, and the affected metadata into an isolated Audit collection.
 
 ---
 
-## 🛠️ Tech Stack
+## 🛠️ Technology Stack
 
-| Category | Technology |
-| :--- | :--- |
-| **Runtime** | Node.js (v20+) |
-| **Framework** | Express.js 5 |
-| **Language** | TypeScript 5 |
-| **Database** | MongoDB |
-| **ORM / ODM** | Mongoose 8 |
-| **Authentication** | JSON Web Tokens (JWT) |
-| **Security** | Helmet, CORS, Express Rate Limit |
-| **Validation** | Joi |
-| **Deployment** | Vercel (`@vercel/node`) |
+| Domain | Technology | Description |
+| :--- | :--- | :--- |
+| **Runtime** | Node.js (v20+) | High-performance V8 engine runtime |
+| **Framework** | Express.js 5 | Lightweight, fast web framework |
+| **Language** | TypeScript 5 | Strict typing for enterprise reliability |
+| **Database** | MongoDB | Highly scalable NoSQL document store |
+| **ODM** | Mongoose 8 | Schema validation and querying |
+| **Auth** | JWT | Secure stateless authentication |
+| **Security** | Helmet, CORS, Rate Limit | Defensive headers and traffic control |
 
 ---
 
-## 🏗️ Architecture
-
-The backend follows a classic layered MVC-style REST architecture customized for Express and TypeScript:
-
-1. **Routes (`src/routes/`)**: Maps HTTP methods and endpoints to specific controller logic. Attaches authorization middleware.
-2. **Controllers (`src/controllers/`)**: Handles incoming HTTP request parsing, interacts with Mongoose models, and formats JSON responses.
-3. **Models (`src/models/`)**: Defines MongoDB schemas, Mongoose hooks (pre-save, post-save), and TTL indexes.
-4. **Middleware (`src/middleware/`)**: Contains reusable pipeline logic such as JWT verification, role-checking, and global error handling.
-
-### Security Model
-
-- **CORS Mitigation**: Specifically configured to accept credentials only from the designated frontend domain.
-- **Vercel Proxy Trust**: Uses `app.set('trust proxy', 1)` to correctly identify client IPs behind Vercel's edge network for accurate rate-limiting.
-- **Error Obfuscation**: The global error handler prevents raw stack traces from leaking to the frontend in production environments.
-
----
-
-## 📁 Project Structure
+## 🏗️ Project Structure
 
 ```text
 ├── 📁 api/                       # Vercel Serverless entrypoint
 │   └── 📄 index.ts               # Mounts the Express app for Vercel
 ├── 📁 src/
-│   ├── 📁 config/                # Database connection and environment config
-│   ├── 📁 controllers/           # Route handler logic
+│   ├── 📁 config/                # Database connection logic
+│   ├── 📁 controllers/           # API Endpoint logic
 │   │   ├── 📄 audit.controller.ts
 │   │   ├── 📄 auth.controller.ts
 │   │   ├── 📄 blacklist.controller.ts
+│   │   ├── 📄 finance.controller.ts  # Financial tracking calculations
+│   │   ├── 📄 instructors.controller.ts
 │   │   ├── 📄 tracks.controller.ts
 │   │   └── 📄 users.controller.ts
-│   ├── 📁 middleware/            # Express middlewares
-│   │   ├── 📄 auth.middleware.ts # JWT parsing and role verification
-│   │   └── 📄 errorHandler.ts    # Global error interceptor
-│   ├── 📁 models/                # Mongoose Database Schemas
+│   ├── 📁 middleware/            # Pipeline middlewares
+│   │   ├── 📄 auth.middleware.ts # JWT verification & RBAC enforcement
+│   │   └── 📄 errorHandler.ts    # Global exception catcher
+│   ├── 📁 models/                # Mongoose Schemas & Hooks
 │   │   ├── 📄 AuditLog.ts
 │   │   ├── 📄 BlacklistEntry.ts
-│   │   ├── 📄 DailyStat.ts
-│   │   ├── 📄 Track.ts
+│   │   ├── 📄 Instructor.ts
+│   │   ├── 📄 TrainingSession.ts
 │   │   └── 📄 User.ts
 │   ├── 📁 routes/                # Express router definitions
-│   │   ├── 📄 audit.routes.ts
-│   │   ├── 📄 auth.routes.ts
-│   │   ├── 📄 blacklist.routes.ts
-│   │   ├── 📄 tracks.routes.ts
-│   │   └── 📄 users.routes.ts
-│   └── 📄 index.ts               # Express app initialization & local dev server
+│   └── 📄 index.ts               # Local development server bootstrapper
 ├── 📄 package.json               # Dependencies and scripts
-├── 📄 tsconfig.json              # TypeScript compilation rules
-└── 📄 vercel.json                # Vercel rewrite rules
+└── 📄 vercel.json                # Vercel deployment configurations
 ```
 
 ---
 
-## 🎭 Role-Based Access Control
+## 🎭 Role-Based Access Matrix
 
-The backend enforces data security at the endpoint level using the `authorizeRoles` middleware.
+The backend enforces endpoint-level authorization via the `authorizeRoles` middleware. Here is a high-level overview of the security matrix:
 
-| API Endpoint | Admin | Employee | Viewer |
+| Subsystem | Admin | Employee | Viewer |
 | :--- | :---: | :---: | :---: |
-| `POST /api/auth/login` | ✅ | ✅ | ✅ |
-| `POST /api/auth/logout` | ✅ | ✅ | ✅ |
-| `POST /api/auth/refresh` | ✅ | ✅ | ✅ |
-| `GET /api/auth/me` | ✅ | ✅ | ✅ |
-| `GET /api/dashboard/stats` | ✅ | ✅ | ✅ |
-| `GET /api/blacklist` | ✅ | ✅ | ✅ |
-| `GET /api/blacklist/ids` | ✅ | ✅ | ✅ |
-| `POST /api/blacklist` | ✅ | ✅ | ❌ |
-| `POST /api/blacklist/bulk` | ✅ | ✅ | ❌ |
-| `POST /api/blacklist/bulk-check` | ✅ | ✅ | ❌ |
-| `DELETE /api/blacklist` | ✅ | ✅ | ❌ |
-| `GET /api/tracks` | ✅ | ✅ | ✅ |
-| `POST /api/tracks` | ✅ | ✅ | ❌ |
-| `DELETE /api/tracks/:id` | ✅ | ✅ | ❌ |
-| `GET /api/users` | ✅ | ❌ | ❌ |
-| `POST /api/users` | ✅ | ❌ | ❌ |
-| `PATCH /api/users/:id` | ✅ | ❌ | ❌ |
-| `GET /api/audit` | ✅ | ❌ | ❌ |
-| `GET /api/hours/sessions` | ✅ | ✅ | ✅ |
-| `POST /api/hours/sessions` | ✅ | ✅ | ❌ |
-| `DELETE /api/hours/sessions/:id` | ✅ | ✅ | ❌ |
-| `POST /api/hours/import` | ✅ | ✅ | ❌ |
-| `GET /api/hours/timetable` | ✅ | ✅ | ✅ |
-| `GET /api/hours/timetable/:fiscalYear` | ✅ | ✅ | ✅ |
-| `GET /api/hours/instructors` | ✅ | ✅ | ✅ |
-| `DELETE /api/hours/sessions/bulk` | ✅ | ✅ | ❌ |
-| `POST /api/attendance-sheet/build` | ✅ | ✅ | ❌ |
-| `GET /api/planned/:fiscalYear` | ✅ | ✅ | ✅ |
-| `PUT /api/planned/:fiscalYear` | ✅ | ✅ | ❌ |
-| `PATCH /api/planned/:fiscalYear/cell` | ✅ | ✅ | ❌ |
-| `GET /api/planned/:fiscalYear/comparison` | ✅ | ✅ | ✅ |
-| `GET /api/planned/:fiscalYear/export` | ✅ | ✅ | ✅ |
+| **Authentication & Profile** | ✅ | ✅ | ✅ |
+| **View Analytics & Dashboards** | ✅ | ✅ | ✅ |
+| **View Blacklist & Sessions** | ✅ | ✅ | ✅ |
+| **Mutate Blacklist (Add/Del)** | ✅ | ✅ | ❌ |
+| **Import/Edit Sessions & Hours** | ✅ | ✅ | ❌ |
+| **Manage Instructor Profiles** | ✅ | ✅ | ❌ |
+| **View Financial Reports** | ✅ | ✅ | ❌ |
+| **Manage Users & Audit Logs** | ✅ | ❌ | ❌ |
 
 ---
 
-## 🔐 Environment Variables
+## ⚙️ Environment Configuration
 
-Create a `.env` file in the project root.
+Create a `.env` file in the project root:
 
 ```env
 # Server Configuration
@@ -199,7 +154,6 @@ JWT_ACCESS_SECRET=your_super_secret_access_key
 JWT_REFRESH_SECRET=your_super_secret_refresh_key
 
 # Admin Bootstrapping
-# Used by the seeding script to create the first admin account
 DEFAULT_ADMIN_EMAIL=admin@creativa.gov.eg
 DEFAULT_ADMIN_PASSWORD=creativa_secure_pass
 DEFAULT_ADMIN_USERNAME=admin
@@ -207,50 +161,38 @@ DEFAULT_ADMIN_USERNAME=admin
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Local Development
 
-### Prerequisites
-
-- Node.js 20.9.0+
-- A running MongoDB instance (Local or MongoDB Atlas)
-
-### Installation & Run
-
-1. **Clone the repository**:
+1. **Clone & Install**:
    ```bash
    git clone https://github.com/mahmoud-el-tohamy/creativa-backend.git
-   ```
-
-2. **Install dependencies**:
-   ```bash
+   cd creativa-backend
    npm install
    ```
 
-3. **Configure environment variables**:
-   Copy `.env.example` to `.env` (or create it manually) and fill in your MongoDB URI and JWT secrets.
+2. **Configure Environment**: Set up your `.env` file with a valid MongoDB URI.
 
-4. **Seed the database**:
-   Run the seed script to inject the first Admin user into the database using your configured default environment variables.
+3. **Seed Database**: Inject the initial Admin account.
    ```bash
    npm run seed
    ```
 
-5. **Start the development server**:
+4. **Start Development Server**:
    ```bash
    npm run dev
    ```
-   *(The server will start on `http://localhost:5000`)*
 
 ---
 
-## 📝 Deployment & Security
+## 🌐 Deployment
 
-This project is optimized for deployment on **Vercel** using Serverless Functions.
-
-- **Vercel Setup**: Connect your GitHub repository to Vercel. Vercel's Node.js builder will automatically detect the `api/index.ts` and `vercel.json` configurations.
-- **Environment Variables**: Ensure all variables from your local `.env` are mirrored in your Vercel Project Settings. Remember to set `NODE_ENV=production` and update `FRONTEND_URL` to your live Next.js domain.
-- **Cookie Security Options**: In production, the backend automatically flags JWT cookies as `Secure: true` and `SameSite: none` to permit cross-origin authentication with the frontend domain.
+This backend is optimized for zero-config deployment on **Vercel**.
+- The `vercel.json` rewrite rules natively route all requests into the Serverless function located at `api/index.ts`.
+- Make sure to configure the `FRONTEND_URL` environment variable on Vercel to match your live Next.js domain, ensuring CORS allows cookie transmissions seamlessly.
+- Cookies will automatically be marked `Secure: true` and `SameSite: none` in production mode.
 
 ---
 
-**Built with ❤️ for Creativa Innovation Hub - Mansoura.**
+<div align="center">
+  <b>Built with ❤️ for Creativa Innovation Hub - Mansoura.</b>
+</div>
