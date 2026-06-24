@@ -501,18 +501,18 @@ export const getAccountantDashboard = async (
 
     const { start, end, label } = getDateRange({ period, startDate: rawStartDate, endDate: rawEndDate });
 
-    // 1. Get all active instructors with their rates
-    const instructors = await Instructor.find({ isActive: true })
-      .select("_id name dailyTrainingRate dailyConsultationRate")
-      .lean();
-
-    // 2. Get all sessions in period
-    const sessions = await TrainingSession.find({
-      date: { $gte: start, $lte: end },
-      instructorId: { $exists: true, $ne: null },
-    })
-      .select("instructorId instructorName programName hours dayValue mode type sessionName date attendeesCount")
-      .lean();
+    // 1 & 2. Get all active instructors and sessions in period concurrently
+    const [instructors, sessions] = await Promise.all([
+      Instructor.find({ isActive: true })
+        .select("_id name dailyTrainingRate dailyConsultationRate")
+        .lean(),
+      TrainingSession.find({
+        date: { $gte: start, $lte: end },
+        instructorId: { $exists: true, $ne: null },
+      })
+        .select("instructorId instructorName programName hours dayValue mode type sessionName date attendeesCount")
+        .lean(),
+    ]);
 
     // 3. Build instructor rate lookup map
     const rateMap = new Map(

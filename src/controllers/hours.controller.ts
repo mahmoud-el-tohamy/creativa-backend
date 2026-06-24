@@ -1015,19 +1015,147 @@ export const getDashboardStats = async (req: Request, res: Response, next: NextF
       }
     }
 
-    // 1. Overall stats
-    const overallStats = await TrainingSession.aggregate([
-      { $match: baseMatch },
-      {
-        $group: {
-          _id: null,
-          totalTrainingDays: { $sum: "$dayValue" },
-          totalSessions: { $sum: 1 },
-          totalAttendees: { $sum: "$attendeesCount" },
-          totalHours: { $sum: "$hours" },
+    // --- START PARALLEL AGGREGATIONS ---
+    const [
+      overallStats,
+      programDaysRaw,
+      monthlyActivityRaw,
+      dailyActivityRaw,
+      modeRaw,
+      topInstructorsRaw,
+      typeRaw,
+      totalWarnings,
+      warning1,
+      warning2,
+      blacklistedThisMonth,
+    ] = await Promise.all([
+      // 1. Overall stats
+      TrainingSession.aggregate([
+        { $match: baseMatch },
+        {
+          $group: {
+            _id: null,
+            totalTrainingDays: { $sum: "$dayValue" },
+            totalSessions: { $sum: 1 },
+            totalAttendees: { $sum: "$attendeesCount" },
+            totalHours: { $sum: "$hours" },
+          },
         },
-      },
+      ]),
+      // 2. Program Performance
+      TrainingSession.aggregate([
+        { $match: baseMatch },
+        {
+          $group: {
+            _id: {
+              $cond: {
+                if: { $eq: ["$type", "Consultation"] },
+                then: "Consultation",
+                else: {
+                  $cond: {
+                    if: { $eq: ["$programName", "Incubation"] },
+                    then: "Incubation",
+                    else: "$timetableProgram",
+                  },
+                },
+              },
+            },
+            totalDays: { $sum: "$dayValue" },
+            sessionCount: { $sum: 1 },
+            attendeesCount: { $sum: "$attendeesCount" },
+            totalHours: { $sum: "$hours" },
+          },
+        },
+        { $sort: { totalDays: -1 } },
+      ]),
+      // 3. Monthly Activity
+      TrainingSession.aggregate([
+        { $match: baseMatch },
+        {
+          $group: {
+            _id: {
+              year: { $year: "$date" },
+              month: { $month: "$date" },
+            },
+            sessions: { $sum: 1 },
+            days: { $sum: "$dayValue" },
+            attendees: { $sum: "$attendeesCount" },
+            hours: { $sum: "$hours" },
+          },
+        },
+        { $sort: { "_id.year": 1, "_id.month": 1 } },
+      ]),
+      // Daily Activity
+      TrainingSession.aggregate([
+        { $match: baseMatch },
+        {
+          $group: {
+            _id: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
+            sessions: { $sum: 1 },
+            days: { $sum: "$dayValue" },
+            attendees: { $sum: "$attendeesCount" },
+            hours: { $sum: "$hours" },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ]),
+      // 4. Mode Breakdown
+      TrainingSession.aggregate([
+        { $match: baseMatch },
+        {
+          $group: {
+            _id: "$mode",
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+      // 5. Top Instructors
+      TrainingSession.aggregate([
+        { $match: { ...baseMatch, instructorName: { $ne: "" }, instructorId: { $ne: null } } },
+        {
+          $group: {
+            _id: "$instructorName",
+            sessions: { $sum: 1 },
+            totalHours: { $sum: "$hours" },
+            totalAttendees: { $sum: "$attendeesCount" },
+          },
+        },
+        { $sort: { sessions: -1 } },
+        { $limit: 5 },
+      ]),
+      // 6. Type Breakdown
+      TrainingSession.aggregate([
+        { $match: baseMatch },
+        {
+          $group: {
+            _id: "$type",
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { count: -1 } }
+      ]),
+      // 7. Warning Stats
+      BlacklistEntry.countDocuments({ status: "warning" }),
+      BlacklistEntry.countDocuments({ 
+        status: "warning", 
+        $expr: { $eq: [{ $size: "$absences" }, 1] } 
+      }),
+      BlacklistEntry.countDocuments({ 
+        status: "warning", 
+        $expr: { $gte: [{ $size: "$absences" }, 2] } 
+      }),
+      (async () => {
+        const currentMonth = new Date().getMonth();
+        const currentYear = new Date().getFullYear();
+        const startOfMonth = new Date(currentYear, currentMonth, 1);
+        return await BlacklistEntry.countDocuments({
+          status: "blacklisted",
+          addedAt: { $gte: startOfMonth }
+        });
+      })()
     ]);
+    
+    // --- END PARALLEL AGGREGATIONS ---
 
     const stats = overallStats[0] || {
       totalTrainingDays: 0,
@@ -1036,32 +1164,6 @@ export const getDashboardStats = async (req: Request, res: Response, next: NextF
       totalHours: 0,
     };
 
-    // 2. Program Performance
-    const programDaysRaw = await TrainingSession.aggregate([
-      { $match: baseMatch },
-      {
-        $group: {
-          _id: {
-            $cond: {
-              if: { $eq: ["$type", "Consultation"] },
-              then: "Consultation",
-              else: {
-                $cond: {
-                  if: { $eq: ["$programName", "Incubation"] },
-                  then: "Incubation",
-                  else: "$timetableProgram",
-                },
-              },
-            },
-          },
-          totalDays: { $sum: "$dayValue" },
-          sessionCount: { $sum: 1 },
-          attendeesCount: { $sum: "$attendeesCount" },
-          totalHours: { $sum: "$hours" },
-        },
-      },
-      { $sort: { totalDays: -1 } },
-    ]);
     const programDays = programDaysRaw.map((p) => ({
       program: String(p._id),
       totalDays: p.totalDays,
@@ -1069,24 +1171,6 @@ export const getDashboardStats = async (req: Request, res: Response, next: NextF
       attendeesCount: p.attendeesCount,
       totalHours: p.totalHours,
     }));
-
-    // 3. Monthly Activity
-    const monthlyActivityRaw = await TrainingSession.aggregate([
-      { $match: baseMatch },
-      {
-        $group: {
-          _id: {
-            year: { $year: "$date" },
-            month: { $month: "$date" },
-          },
-          sessions: { $sum: 1 },
-          days: { $sum: "$dayValue" },
-          attendees: { $sum: "$attendeesCount" },
-          hours: { $sum: "$hours" },
-        },
-      },
-      { $sort: { "_id.year": 1, "_id.month": 1 } },
-    ]);
 
     const monthNamesArabic = [
       "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
@@ -1102,20 +1186,6 @@ export const getDashboardStats = async (req: Request, res: Response, next: NextF
       hours: m.hours,
     }));
     
-    // Daily Activity (for time range control frontend calculation)
-    const dailyActivityRaw = await TrainingSession.aggregate([
-      { $match: baseMatch },
-      {
-        $group: {
-          _id: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
-          sessions: { $sum: 1 },
-          days: { $sum: "$dayValue" },
-          attendees: { $sum: "$attendeesCount" },
-          hours: { $sum: "$hours" },
-        },
-      },
-      { $sort: { _id: 1 } },
-    ]);
     const dailyActivity = dailyActivityRaw.map((d) => ({
       date: String(d._id),
       sessions: d.sessions,
@@ -1124,16 +1194,6 @@ export const getDashboardStats = async (req: Request, res: Response, next: NextF
       hours: d.hours,
     }));
 
-    // 4. Mode Breakdown
-    const modeRaw = await TrainingSession.aggregate([
-      { $match: baseMatch },
-      {
-        $group: {
-          _id: "$mode",
-          count: { $sum: 1 },
-        },
-      },
-    ]);
     let online = 0, offline = 0;
     modeRaw.forEach((m) => {
       if (m._id === "online") online = m.count;
@@ -1147,20 +1207,6 @@ export const getDashboardStats = async (req: Request, res: Response, next: NextF
       offlinePct: totalMode ? Number(((offline / totalMode) * 100).toFixed(1)) : 0,
     };
 
-    // 5. Top Instructors
-    const topInstructorsRaw = await TrainingSession.aggregate([
-      { $match: { ...baseMatch, instructorName: { $ne: "" }, instructorId: { $ne: null } } },
-      {
-        $group: {
-          _id: "$instructorName",
-          sessions: { $sum: 1 },
-          totalHours: { $sum: "$hours" },
-          totalAttendees: { $sum: "$attendeesCount" },
-        },
-      },
-      { $sort: { sessions: -1 } },
-      { $limit: 5 },
-    ]);
     const topInstructors = topInstructorsRaw.map((t) => ({
       name: String(t._id),
       sessions: t.sessions,
@@ -1168,17 +1214,6 @@ export const getDashboardStats = async (req: Request, res: Response, next: NextF
       totalAttendees: t.totalAttendees,
     }));
 
-    // 6. Type Breakdown
-    const typeRaw = await TrainingSession.aggregate([
-      { $match: baseMatch },
-      {
-        $group: {
-          _id: "$type",
-          count: { $sum: 1 },
-        },
-      },
-      { $sort: { count: -1 } }
-    ]);
     const totalTypes = typeRaw.reduce((sum, t) => sum + t.count, 0);
     const typeBreakdown = typeRaw.map((t) => ({
       type: String(t._id),
@@ -1186,27 +1221,11 @@ export const getDashboardStats = async (req: Request, res: Response, next: NextF
       pct: totalTypes ? Number(((t.count / totalTypes) * 100).toFixed(1)) : 0,
     }));
 
-    // 7. Warning Stats
-    const totalWarnings = await BlacklistEntry.countDocuments({ status: "warning" });
-    
-    const warning1 = await BlacklistEntry.countDocuments({ 
-      status: "warning", 
-      $expr: { $eq: [{ $size: "$absences" }, 1] } 
-    });
-    
-    const warning2 = await BlacklistEntry.countDocuments({ 
-      status: "warning", 
-      $expr: { $gte: [{ $size: "$absences" }, 2] } 
-    });
-
     const currentMonth = new Date().getMonth();
+
     const currentYear = new Date().getFullYear();
     const startOfMonth = new Date(currentYear, currentMonth, 1);
     
-    const blacklistedThisMonth = await BlacklistEntry.countDocuments({
-      status: "blacklisted",
-      addedAt: { $gte: startOfMonth }
-    });
 
     const warningStats = {
       total: totalWarnings,
