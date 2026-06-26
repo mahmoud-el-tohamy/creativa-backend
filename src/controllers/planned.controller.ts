@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { PlannedTimetable } from "../models/PlannedTimetable";
+import { User } from "../models/User";
 import { TIMETABLE_PROGRAMS } from "../models/TrainingSession";
 import { computeComparison } from "../services/timetableComparison";
 import { exportPlannedTimetable } from "../services/plannedExcelExporter";
@@ -214,5 +215,160 @@ export async function downloadPlannedExport(req: Request, res: Response): Promis
   } catch (err) {
     console.error("[planned] downloadPlannedExport error:", err);
     res.status(500).json({ success: false, message: "حدث خطأ أثناء تصدير الملف" });
+  }
+}
+// ─── POST /api/planned/:targetFY/copy-from/:sourceFY ─────────────────────────
+/**
+ * Copy a plan from sourceFY to targetFY.
+ * If targetFY already has a plan, the request body must include the user's password.
+ * The password is verified using bcrypt before overwriting.
+ */
+export async function copyPlannedTimetable(req: Request, res: Response): Promise<void> {
+  try {
+    const { targetFY, sourceFY } = req.params as { targetFY: string; sourceFY: string };
+    const { password } = req.body as { password?: string };
+
+    // Check if source exists
+    const sourceDoc = await PlannedTimetable.findOne({ fiscalYear: sourceFY }).lean();
+    if (!sourceDoc) {
+      res.status(404).json({ success: false, message: "السنة المالية المصدر غير موجودة" });
+      return;
+    }
+
+    // Check if target already has a plan
+    const existingTarget = await PlannedTimetable.findOne({ fiscalYear: targetFY }).lean();
+    if (existingTarget) {
+      // Password required to overwrite
+      if (!password) {
+        res.status(403).json({ success: false, message: "كلمة المرور مطلوبة لاستبدال خطة موجودة" });
+        return;
+      }
+      // Verify password
+      const userId = req.user?.id?.toString();
+      const userDoc = await User.findById(userId).select("+password");
+      if (!userDoc) {
+        res.status(401).json({ success: false, message: "المستخدم غير موجود" });
+        return;
+      }
+      const passwordMatch = await userDoc.comparePassword(password);
+      if (!passwordMatch) {
+        res.status(401).json({ success: false, message: "كلمة المرور غير صحيحة" });
+        return;
+      }
+    }
+
+    const userId = req.user?.id?.toString() ?? "unknown";
+    const displayName = req.user?.displayName ?? "Unknown";
+
+    // Perform the copy — upsert target with source data
+    let targetDoc = await PlannedTimetable.findOne({ fiscalYear: targetFY });
+    if (!targetDoc) {
+      targetDoc = new PlannedTimetable({ fiscalYear: targetFY });
+    }
+    targetDoc.data = sourceDoc.data as typeof targetDoc.data;
+    targetDoc.lastEditedBy = userId;
+    targetDoc.lastEditedByName = displayName;
+    await targetDoc.save(); // pre-save hook recomputes totals
+
+    const saved = await PlannedTimetable.findOne({ fiscalYear: targetFY }).lean();
+    res.json({ success: true, data: saved });
+  } catch (err) {
+    console.error("[planned] copyPlannedTimetable error:", err);
+    res.status(500).json({ success: false, message: "حدث خطأ أثناء نسخ الخطة" });
+  }
+}
+
+// ─── PATCH /api/planned/:fiscalYear/reset-month ───────────────────────────────
+/**
+ * Zero out all cells for a specific calendar month across all programs.
+ * Password required — verified via bcrypt before any mutation.
+ */
+export async function resetPlannedMonth(req: Request, res: Response): Promise<void> {
+  try {
+    const fiscalYear = req.params.fiscalYear as string;
+    const { monthIndex, password } = req.body as { monthIndex?: unknown; password?: string };
+
+    // Validate monthIndex
+    const monthNum = Number(monthIndex);
+    if (!Number.isInteger(monthNum) || monthNum < 0 || monthNum > 11) {
+      res.status(400).json({ success: false, message: "رقم الشهر غير صالح (0-11)" });
+      return;
+    }
+
+    // Password always required for reset
+    if (!password) {
+      res.status(403).json({ success: false, message: "كلمة المرور مطلوبة" });
+      return;
+    }
+
+    // Verify password
+    const userId = req.user?.id?.toString();
+    const userDoc = await User.findById(userId).select("+password");
+    if (!userDoc) {
+      res.status(401).json({ success: false, message: "المستخدم غير موجود" });
+      return;
+    }
+    const passwordMatch = await userDoc.comparePassword(password);
+    if (!passwordMatch) {
+      res.status(401).json({ success: false, message: "كلمة المرور غير صحيحة" });
+      return;
+    }
+
+    const doc = await PlannedTimetable.findOne({ fiscalYear });
+    if (!doc) {
+      res.status(404).json({ success: false, message: "لا توجد خطة لهذه السنة المالية" });
+      return;
+    }
+
+    // Zero out the month across all programs using $unset / $set
+    const unsetFields: Record<string, "" > = {};
+    for (const prog of TIMETABLE_PROGRAMS) {
+      const progKey = `data.${prog}.${monthNum}`;
+      unsetFields[progKey] = "";
+    }
+
+    await PlannedTimetable.updateOne({ fiscalYear }, { $unset: unsetFields });
+    await recomputeAndSave(fiscalYear);
+
+    const updated = await PlannedTimetable.findOne({ fiscalYear }).lean();
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    console.error("[planned] resetPlannedMonth error:", err);
+    res.status(500).json({ success: false, message: "حدث خطأ أثناء تصفير الشهر" });
+  }
+}
+
+// ─── POST /api/planned/:fiscalYear ───────────────────────────────────────────
+/**
+ * Create a new empty PlannedTimetable document for a fiscal year.
+ */
+export async function createPlannedTimetable(req: Request, res: Response): Promise<void> {
+  try {
+    const fiscalYear = req.params.fiscalYear as string;
+
+    // Validate format (e.g. FY2026-2027)
+    if (!/^FY\d{4}-\d{4}$/.test(fiscalYear)) {
+      res.status(400).json({ success: false, message: "صيغة السنة المالية غير صالحة. يجب أن تكون مثل FY2026-2027" });
+      return;
+    }
+
+    const existing = await PlannedTimetable.findOne({ fiscalYear });
+    if (existing) {
+      res.status(400).json({ success: false, message: "الخطة لهذه السنة المالية موجودة بالفعل" });
+      return;
+    }
+
+    const empty = PlannedTimetable.createEmpty(fiscalYear);
+    const doc = new PlannedTimetable({
+      ...empty,
+      lastEditedBy: req.user?.id?.toString() ?? "unknown",
+      lastEditedByName: req.user?.displayName ?? "Unknown",
+    });
+
+    await doc.save();
+    res.status(201).json({ success: true, data: doc });
+  } catch (err) {
+    console.error("[planned] createPlannedTimetable error:", err);
+    res.status(500).json({ success: false, message: "حدث خطأ أثناء إنشاء خطة سنة جديدة" });
   }
 }

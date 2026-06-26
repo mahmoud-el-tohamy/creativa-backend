@@ -11,6 +11,7 @@ import {
 } from "../models/TrainingSession";
 import { Instructor } from "../models/Instructor";
 import { TimetableSnapshot } from "../models/TimetableSnapshot";
+import { PlannedTimetable } from "../models/PlannedTimetable";
 import { AuditLog } from "../models/AuditLog";
 import { BlacklistEntry } from "../models/BlacklistEntry";
 import { rebuildTimetableSnapshot, rebuildAfterSessionChange } from "../services/timetableBuilder";
@@ -390,8 +391,13 @@ export const getTimetable = async (req: Request, res: Response, next: NextFuncti
 
 export const listFiscalYears = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const fiscalYears = await TrainingSession.distinct("fiscalYear");
-    fiscalYears.sort((a, b) => b.localeCompare(a)); // descending
+    const [sessionYears, plannedYears, snapshotYears] = await Promise.all([
+      TrainingSession.distinct("fiscalYear"),
+      PlannedTimetable.distinct("fiscalYear"),
+      TimetableSnapshot.distinct("fiscalYear"),
+    ]);
+    const allYears = new Set([...sessionYears, ...plannedYears, ...snapshotYears]);
+    const fiscalYears = Array.from(allYears).sort((a, b) => b.localeCompare(a)); // descending
     res.status(200).json({ success: true, data: fiscalYears });
   } catch (error) {
     next(error);

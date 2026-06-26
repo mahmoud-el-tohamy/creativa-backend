@@ -8,6 +8,9 @@ import {
   updatePlannedCell,
   getPlannedComparison,
   downloadPlannedExport,
+  copyPlannedTimetable,
+  resetPlannedMonth,
+  createPlannedTimetable,
 } from "../controllers/planned.controller";
 
 const router = Router();
@@ -30,10 +33,25 @@ router.get("/:fiscalYear", getPlannedTimetable);
 // admin + employee only
 router.put("/:fiscalYear", authorize("admin", "employee"), upsertPlannedTimetable);
 
+// ─── Create empty planned timetable ──────────────────────────────────────────
+// POST /api/planned/:fiscalYear
+// admin + employee only
+router.post("/:fiscalYear", authorize("admin", "employee"), createPlannedTimetable);
+
 // ─── Update single cell ───────────────────────────────────────────────────────
 // PATCH /api/planned/:fiscalYear/cell
 // admin + employee only. Uses MongoDB $set dot-notation for performance.
 router.patch("/:fiscalYear/cell", authorize("admin", "employee"), updatePlannedCell);
+
+// ─── Reset month ─────────────────────────────────────────────────────────────
+// PATCH /api/planned/:fiscalYear/reset-month
+// admin + employee only. Requires password in body.
+router.patch("/:fiscalYear/reset-month", authorize("admin", "employee"), resetPlannedMonth);
+
+// ─── Copy plan ────────────────────────────────────────────────────────────────
+// POST /api/planned/:targetFY/copy-from/:sourceFY
+// admin + employee only. Requires password in body when target already has a plan.
+router.post("/:targetFY/copy-from/:sourceFY", authorize("admin", "employee"), copyPlannedTimetable);
 
 // ─── Comparison ───────────────────────────────────────────────────────────────
 // GET /api/planned/:fiscalYear/comparison
