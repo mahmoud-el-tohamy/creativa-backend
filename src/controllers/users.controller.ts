@@ -6,11 +6,46 @@ import path from "path";
 
 export const listUsers = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const users = await User.find()
-      .select("-refreshTokens -password")
-      .sort({ createdAt: -1 })
-      .lean();
-    res.status(200).json({ success: true, data: users });
+    const { page, limit, search } = req.query;
+    const pageNum = parseInt(page as string) || 1;
+    const limitNum = parseInt(limit as string) || 20;
+    const skip = (pageNum - 1) * limitNum;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const query: any = {};
+    if (search) {
+      const searchRegex = new RegExp(search as string, "i");
+      query.$or = [
+        { displayName: searchRegex },
+        { email: searchRegex },
+        { nationalId: searchRegex }
+      ];
+    }
+
+    const [users, totalCount, activeCount, inactiveCount] = await Promise.all([
+      User.find(query)
+        .select("-refreshTokens -password")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      User.countDocuments(query),
+      User.countDocuments({ ...query, isActive: true }),
+      User.countDocuments({ ...query, isActive: false })
+    ]);
+
+    const hasMore = skip + users.length < totalCount;
+
+    res.status(200).json({ 
+      success: true, 
+      data: {
+        users,
+        totalCount,
+        activeCount,
+        inactiveCount,
+        hasMore
+      }
+    });
   } catch (error) {
     next(error);
   }
