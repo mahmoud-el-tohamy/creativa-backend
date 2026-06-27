@@ -6,8 +6,7 @@ import { authorize } from "../middleware/authorize";
 const router = Router();
 
 router.use(authenticate);
-router.use(authorize("admin", "employee"));
 
-router.get("/stats", getChartStats);
+router.get("/stats", authorize("admin", "employee", "viewer"), getChartStats);
 
 export default router;
