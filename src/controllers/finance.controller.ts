@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { TrainingSession } from "../models/TrainingSession";
 import { exportFilteredFinancials } from "../services/instructorExcelExporter";
+import { calculateSessionPayout } from "../services/payoutCalculator";
 
 export const getInstructorFinancials = async (req: Request, res: Response) => {
   try {
@@ -67,25 +68,32 @@ export const getInstructorFinancials = async (req: Request, res: Response) => {
       query.programName = programName;
     }
 
-    // Populate instructor to get daily rates and cvLink
+    // Populate instructor to get rates (ratePeriods for historical lookup + flat fields as fallback) and cvLink
     const sessions = await TrainingSession.find(query)
-      .populate("instructorId", "dailyTrainingRate dailyConsultationRate cvLink")
+      .populate("instructorId", "dailyTrainingRate dailyConsultationRate ratePeriods cvLink")
       .sort({ date: 1 })
       .lean();
 
     const allData = sessions.map((session: any) => {
       const instructor = session.instructorId || {};
       const isConsultation = session.type === "Consultation" || session.type === "Consultation & Mentorship";
-      let dailyRate = isConsultation
-        ? (instructor.dailyConsultationRate || 0)
-        : (instructor.dailyTrainingRate || 0);
 
-      if (session.isPaid === false) {
-        dailyRate = 0;
-      }
+      const payout = calculateSessionPayout({
+        sessionDate: new Date(session.date),
+        hours: session.hours ?? 0,
+        attendeesCount: session.attendeesCount ?? 0,
+        isConsultation,
+        isPaid: session.isPaid,
+        instructor: {
+          ratePeriods: instructor.ratePeriods ?? [],
+          dailyTrainingRate: instructor.dailyTrainingRate ?? 0,
+          dailyConsultationRate: instructor.dailyConsultationRate ?? 0,
+        },
+      });
 
-      const hourlyRate = dailyRate / 7;
-      const totalCost = hourlyRate * session.hours;
+      // dailyRate kept for downstream display (unchanged field name in response)
+      const dailyRate = payout.applicableDailyRate;
+      const totalCost = payout.finalAmount;
 
       return {
         _id: session._id,
@@ -97,8 +105,10 @@ export const getInstructorFinancials = async (req: Request, res: Response) => {
         attendance: session.attendeesCount,
         instructorId: instructor._id ? instructor._id.toString() : "",
         instructorName: session.instructorName || "بدون مدرب",
-        dailyRate: dailyRate,
-        totalCost: totalCost,
+        dailyRate,
+        totalCost,
+        // Additional field for future UI transparency (not yet rendered — costs nothing to include)
+        attendancePercentage: payout.attendancePercentage,
         cvLink: instructor.cvLink || "",
         reportLink: session.trainingReportUrl || session.evaluationReportUrl || "",
         isPaid: session.isPaid ?? true,

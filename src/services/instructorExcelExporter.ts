@@ -3,6 +3,7 @@ import { Types } from "mongoose";
 import { Instructor } from "../models/Instructor";
 import { TrainingSession } from "../models/TrainingSession";
 import { getDateRange, DateRangeFilter } from "./instructorService";
+import { calculateSessionPayout } from "./payoutCalculator";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -430,10 +431,22 @@ export async function exportInstructorSessions(
     const s = rawSessions[i];
     const isConsultation = (s.programName as string) === "Consultation & Mentorship";
     const isHackathon = (s.programName as string) === "Hackathons / Competitions";
-    const unitRate = isConsultation ? hourlyConsultationRate : hourlyTrainingRate;
-    const dailyRate = isConsultation ? instructor.dailyConsultationRate : instructor.dailyTrainingRate;
-    const hourlyRate = dailyRate / 7;
-    const sessionAmount = Math.round(s.hours * hourlyRate * 100) / 100;
+
+    const payout = calculateSessionPayout({
+      sessionDate: new Date(s.date),
+      hours: s.hours ?? 0,
+      attendeesCount: s.attendeesCount ?? 0,
+      isConsultation,
+      isPaid: s.isPaid,
+      instructor: {
+        ratePeriods: instructor.ratePeriods ?? [],
+        dailyTrainingRate: instructor.dailyTrainingRate ?? 0,
+        dailyConsultationRate: instructor.dailyConsultationRate ?? 0,
+      },
+    });
+
+    const dailyRate = payout.applicableDailyRate;
+    const sessionAmount = payout.finalAmount;
 
     // Row fill color based on type
     let fillRgb = i % 2 === 0 ? "FFFFFF" : TEAL_LIGHT;
@@ -466,8 +479,8 @@ export async function exportInstructorSessions(
     };
     ws[cellAddr(r, 9)] = { v: instructor ? instructor.name : "غير معروف", t: "s", s: baseStyle };
     ws[cellAddr(r, 10)] = { v: s.hours, t: "n", z: "0.0", s: centerStyle };
-    ws[cellAddr(r, 11)] = { v: dailyRate, t: "n", z: "#,##0.00", s: centerStyle };
-    ws[cellAddr(r, 12)] = { v: sessionAmount, t: "n", z: "#,##0.00", s: centerStyle };
+    ws[cellAddr(r, 11)] = { v: dailyRate, t: "n", z: "#,##0.000", s: centerStyle };
+    ws[cellAddr(r, 12)] = { v: sessionAmount, t: "n", z: "#,##0.000", s: centerStyle };
 
     // لينك السيرة الذاتية
     if (instructor.cvLink) {
@@ -542,7 +555,7 @@ export async function exportInstructorSessions(
     ws[cellAddr(r, 12)] = {
       t: "n",
       f: `SUM(${colLetter(12)}${dataStartRef}:${colLetter(12)}${dataEnd})`,
-      z: "#,##0.00",
+      z: "#,##0.000",
       s: totalsStyle,
     };
 
@@ -576,7 +589,8 @@ export async function exportAllInstructorSessions(
     .lean();
 
   const instructorIds = [...new Set(rawSessions.map(s => s.instructorId?.toString()))].filter(Boolean) as string[];
-  const instructors = await Instructor.find({ _id: { $in: instructorIds } });
+  const instructors = await Instructor.find({ _id: { $in: instructorIds } })
+    .select("_id name dailyTrainingRate dailyConsultationRate ratePeriods graduationYear cvLink");
   
   const instructorMap = new Map();
   for (const inst of instructors) {
@@ -670,13 +684,25 @@ export async function exportAllInstructorSessions(
 
     const isConsultation = (s.programName as string) === "Consultation & Mentorship" || s.type === "Consultation";
     const isHackathon = (s.programName as string) === "Hackathons / Competitions";
-    let dailyRate = isConsultation ? dailyConsultationRate : dailyTrainingRate;
-    let hourlyRate = dailyRate / 7;
-    let sessionAmount = Math.round(s.hours * hourlyRate * 100) / 100;
 
-    if (s.isPaid === false) {
-      sessionAmount = 0;
-      dailyRate = 0;
+    let dailyRate = 0;
+    let sessionAmount = 0;
+
+    if (instructor) {
+      const payout = calculateSessionPayout({
+        sessionDate: new Date(s.date),
+        hours: s.hours ?? 0,
+        attendeesCount: s.attendeesCount ?? 0,
+        isConsultation,
+        isPaid: s.isPaid,
+        instructor: {
+          ratePeriods: instructor.ratePeriods ?? [],
+          dailyTrainingRate: instructor.dailyTrainingRate ?? 0,
+          dailyConsultationRate: instructor.dailyConsultationRate ?? 0,
+        },
+      });
+      dailyRate = payout.applicableDailyRate;
+      sessionAmount = payout.finalAmount;
     }
 
     // Row fill color based on type
@@ -710,8 +736,8 @@ export async function exportAllInstructorSessions(
     };
     ws[cellAddr(r, 9)] = { v: instructor ? instructor.name : "غير معروف", t: "s", s: baseStyle };
     ws[cellAddr(r, 10)] = { v: s.hours, t: "n", z: "0.0", s: centerStyle };
-    ws[cellAddr(r, 11)] = { v: dailyRate, t: "n", z: "#,##0.00", s: centerStyle };
-    ws[cellAddr(r, 12)] = { v: sessionAmount, t: "n", z: "#,##0.00", s: centerStyle };
+    ws[cellAddr(r, 11)] = { v: dailyRate, t: "n", z: "#,##0.000", s: centerStyle };
+    ws[cellAddr(r, 12)] = { v: sessionAmount, t: "n", z: "#,##0.000", s: centerStyle };
 
     // لينك السيرة الذاتية
     if (instructor?.cvLink) {
@@ -786,7 +812,7 @@ export async function exportAllInstructorSessions(
     ws[cellAddr(r, 12)] = {
       t: "n",
       f: `SUM(${colLetter(12)}${dataStartRef}:${colLetter(12)}${dataEnd})`,
-      z: "#,##0.00",
+      z: "#,##0.000",
       s: totalsStyle,
     };
 
@@ -812,7 +838,8 @@ export async function exportFilteredFinancials(query: any, label: string): Promi
     .lean();
 
   const instructorIds = [...new Set(rawSessions.map(s => s.instructorId?.toString()))].filter(Boolean) as string[];
-  const instructors = await Instructor.find({ _id: { $in: instructorIds } });
+  const instructors = await Instructor.find({ _id: { $in: instructorIds } })
+    .select("_id name dailyTrainingRate dailyConsultationRate ratePeriods graduationYear cvLink");
   
   const instructorMap = new Map();
   for (const inst of instructors) {
@@ -906,13 +933,25 @@ export async function exportFilteredFinancials(query: any, label: string): Promi
 
     const isConsultation = (s.programName as string) === "Consultation & Mentorship" || s.type === "Consultation";
     const isHackathon = (s.programName as string) === "Hackathons / Competitions";
-    let dailyRate = isConsultation ? dailyConsultationRate : dailyTrainingRate;
-    let hourlyRate = dailyRate / 7;
-    let dailyTotal = Math.round(s.hours * hourlyRate * 100) / 100;
 
-    if (s.isPaid === false) {
-      dailyRate = 0;
-      dailyTotal = 0;
+    let dailyRate = 0;
+    let dailyTotal = 0;
+
+    if (instructor) {
+      const payout = calculateSessionPayout({
+        sessionDate: new Date(s.date),
+        hours: s.hours ?? 0,
+        attendeesCount: s.attendeesCount ?? 0,
+        isConsultation,
+        isPaid: s.isPaid,
+        instructor: {
+          ratePeriods: instructor.ratePeriods ?? [],
+          dailyTrainingRate: instructor.dailyTrainingRate ?? 0,
+          dailyConsultationRate: instructor.dailyConsultationRate ?? 0,
+        },
+      });
+      dailyRate = payout.applicableDailyRate;
+      dailyTotal = payout.finalAmount;
     }
 
     // Row fill color based on type
@@ -946,8 +985,8 @@ export async function exportFilteredFinancials(query: any, label: string): Promi
     };
     ws[cellAddr(r, 9)] = { v: instructor ? instructor.name : (s.instructorName || "غير معروف"), t: "s", s: baseStyle };
     ws[cellAddr(r, 10)] = { v: s.hours, t: "n", z: "0.0", s: centerStyle };
-    ws[cellAddr(r, 11)] = { v: dailyRate, t: "n", z: "#,##0.00", s: centerStyle };
-    ws[cellAddr(r, 12)] = { v: dailyTotal, t: "n", z: "#,##0.00", s: centerStyle };
+    ws[cellAddr(r, 11)] = { v: dailyRate, t: "n", z: "#,##0.000", s: centerStyle };
+    ws[cellAddr(r, 12)] = { v: dailyTotal, t: "n", z: "#,##0.000", s: centerStyle };
 
     // لينك السيرة الذاتية
     if (instructor?.cvLink) {
@@ -1022,7 +1061,7 @@ export async function exportFilteredFinancials(query: any, label: string): Promi
     ws[cellAddr(r, 12)] = {
       t: "n",
       f: `SUM(${colLetter(12)}${dataStartRef}:${colLetter(12)}${dataEnd})`,
-      z: "#,##0.00",
+      z: "#,##0.000",
       s: totalsStyle,
     };
 

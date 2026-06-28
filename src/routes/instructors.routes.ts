@@ -14,6 +14,8 @@ import {
   exportProfile,
   exportAllSessions,
   exportAllProfiles,
+  addInstructorRatePeriod,
+  updateInstructorRatePeriod,
 } from "../controllers/instructors.controller";
 
 const router = Router();
@@ -39,6 +41,8 @@ router.get("/summary/dashboard", authorize("admin", "accountant"), getAccountant
 router.get("/:id", authorize("admin", "employee", "accountant"), getInstructor);
 router.put("/:id", authorize("admin", "employee", "accountant"), updateInstructor);
 router.patch("/:id/rates", authorize("admin", "employee", "accountant"), updateInstructorRates);
+router.post("/:id/rate-periods", authorize("admin", "accountant"), addInstructorRatePeriod);
+router.patch("/:id/rate-periods/:periodId", authorize("admin", "accountant"), updateInstructorRatePeriod);
 router.delete("/:id", authorize("admin", "employee"), deleteInstructor);
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────

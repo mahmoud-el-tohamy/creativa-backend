@@ -11,6 +11,8 @@ import {
   exportAllInstructorSessions,
 } from "../services/instructorExcelExporter";
 import { TrainingSession } from "../models/TrainingSession";
+import { calculateSessionPayout } from "../services/payoutCalculator";
+import { addRatePeriod, updateRatePeriod } from "../services/ratePeriodService";
 
 /** Safely extract a string IP address from Express 5's req.ip (string | string[]) */
 const getIp = (req: Request): string => {
@@ -47,13 +49,22 @@ const updateInstructorSchema = Joi.object({
 const ratesSchema = Joi.object({
   dailyTrainingRate: Joi.number().min(0).optional(),
   dailyConsultationRate: Joi.number().min(0).optional(),
-  graduationYear: Joi.number()
-    .integer()
-    .min(1970)
-    .max(new Date().getFullYear())
-    .optional()
-    .allow(null),
+  graduationYear: Joi.number().integer().min(1970).max(new Date().getFullYear()).optional().allow(null),
   cvLink: Joi.string().uri().optional().allow("", null),
+});
+
+const ratePeriodSchema = Joi.object({
+  startDate: Joi.date().iso().required().messages({
+    "any.required": "تاريخ البداية مطلوب",
+  }),
+  endDate: Joi.date().iso().allow(null).optional().default(null),
+  dailyTrainingRate: Joi.number().min(0).required().messages({
+    "any.required": "اليوم التدريبي مطلوب",
+  }),
+  dailyConsultationRate: Joi.number().min(0).required().messages({
+    "any.required": "اليوم الاستشاري مطلوب",
+  }),
+  note: Joi.string().allow("", null).optional(),
 });
 
 // ─── LIST ─────────────────────────────────────────────────────────────────────
@@ -501,57 +512,75 @@ export const getAccountantDashboard = async (
 
     const { start, end, label } = getDateRange({ period, startDate: rawStartDate, endDate: rawEndDate });
 
-    // 1 & 2. Get all active instructors and sessions in period concurrently
+    // 1 & 2. Get all active instructors (with ratePeriods for historical lookup) and sessions concurrently
     const [instructors, sessions] = await Promise.all([
       Instructor.find({ isActive: true })
-        .select("_id name dailyTrainingRate dailyConsultationRate")
+        .select("_id name dailyTrainingRate dailyConsultationRate ratePeriods")
         .lean(),
       TrainingSession.find({
         date: { $gte: start, $lte: end },
         instructorId: { $exists: true, $ne: null },
       })
-        .select("instructorId instructorName programName hours dayValue mode type sessionName date attendeesCount")
+        .select("instructorId instructorName programName hours dayValue mode type sessionName date attendeesCount isPaid")
         .lean(),
     ]);
 
-    // 3. Build instructor rate lookup map
-    const rateMap = new Map(
+    // 3. Build instructor document lookup map (full doc needed for per-session rate resolution)
+    //    rateMap is intentionally removed: rate selection must happen inside the session loop
+    //    because different sessions for the same instructor may fall under different rate periods.
+    const instructorDocMap = new Map(
       instructors.map((i) => [
         i._id.toString(),
         {
           name: i.name,
-          hourlyTraining: (i.dailyTrainingRate || 0) / 7,
-          hourlyConsultation: (i.dailyConsultationRate || 0) / 7,
-          hasRates: (i.dailyTrainingRate || 0) > 0 || (i.dailyConsultationRate || 0) > 0,
+          dailyTrainingRate: i.dailyTrainingRate || 0,
+          dailyConsultationRate: i.dailyConsultationRate || 0,
+          ratePeriods: i.ratePeriods ?? [],
+          hasRates:
+            (i.dailyTrainingRate || 0) > 0 || (i.dailyConsultationRate || 0) > 0,
         },
       ])
     );
 
-    // 4. Compute per-instructor summaries
+    // 4. Compute per-instructor summaries (amounts = post-attendance-discount, as the accountant
+    //    dashboard should reflect what instructors will ACTUALLY be paid, not the undiscounted total)
     const instructorMap = new Map<string, InstructorSummaryAccumulator>();
 
     for (const session of sessions) {
       const instrId = session.instructorId?.toString();
       if (!instrId) continue;
 
-      const rates = rateMap.get(instrId);
-      if (!rates) continue;
+      const instrDoc = instructorDocMap.get(instrId);
+      if (!instrDoc) continue;
 
       const isConsultation = session.type === "Consultation";
-      const unitRate = isConsultation ? rates.hourlyConsultation : rates.hourlyTraining;
-      const amount = session.hours * unitRate;
+
+      const payout = calculateSessionPayout({
+        sessionDate: new Date(session.date),
+        hours: session.hours ?? 0,
+        attendeesCount: session.attendeesCount ?? 0,
+        isConsultation,
+        isPaid: session.isPaid,
+        instructor: {
+          ratePeriods: instrDoc.ratePeriods,
+          dailyTrainingRate: instrDoc.dailyTrainingRate,
+          dailyConsultationRate: instrDoc.dailyConsultationRate,
+        },
+      });
+
+      const amount = payout.finalAmount;
 
       if (!instructorMap.has(instrId)) {
         instructorMap.set(instrId, {
           instructorId: instrId,
-          instructorName: rates.name,
+          instructorName: instrDoc.name,
           totalHours: 0,
           totalSessions: 0,
           totalDays: 0,
           totalAmount: 0,
           trainingAmount: 0,
           consultationAmount: 0,
-          hasRates: rates.hasRates,
+          hasRates: instrDoc.hasRates,
         });
       }
 
@@ -564,14 +593,30 @@ export const getAccountantDashboard = async (
       else acc.trainingAmount += amount;
     }
 
-    // 5. Program breakdown
+    // 5. Program breakdown (using finalAmount — post-attendance-discount)
     const programMap = new Map<string, ProgramAccumulator>();
     for (const session of sessions) {
       const instrId = session.instructorId?.toString();
-      const rates = instrId ? rateMap.get(instrId) : null;
+      const instrDoc = instrId ? instructorDocMap.get(instrId) : null;
       const isConsultation = session.type === "Consultation";
-      const unitRate = rates ? (isConsultation ? rates.hourlyConsultation : rates.hourlyTraining) : 0;
-      const amount = session.hours * unitRate;
+
+      let amount = 0;
+      if (instrDoc) {
+        const payout = calculateSessionPayout({
+          sessionDate: new Date(session.date),
+          hours: session.hours ?? 0,
+          attendeesCount: session.attendeesCount ?? 0,
+          isConsultation,
+          isPaid: session.isPaid,
+          instructor: {
+            ratePeriods: instrDoc.ratePeriods,
+            dailyTrainingRate: instrDoc.dailyTrainingRate,
+            dailyConsultationRate: instrDoc.dailyConsultationRate,
+          },
+        });
+        amount = payout.finalAmount;
+      }
+
       const progName = session.programName || "Unknown";
 
       if (!programMap.has(progName)) {
@@ -588,7 +633,7 @@ export const getAccountantDashboard = async (
       prog.totalAmount += amount;
     }
 
-    // 6. Monthly trend
+    // 6. Monthly trend (using finalAmount — post-attendance-discount)
     const monthMap = new Map<string, MonthAccumulator>();
     const ARABIC_MONTHS = [
       "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
@@ -597,8 +642,7 @@ export const getAccountantDashboard = async (
 
     for (const session of sessions) {
       const d = new Date(session.date);
-      // Ensure key sorts chronologically (YYYY-MM)
-      const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`;
+      const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, "0")}`;
       const mLabel = `${ARABIC_MONTHS[d.getMonth()]} ${d.getFullYear()}`;
 
       if (!monthMap.has(key)) {
@@ -609,10 +653,27 @@ export const getAccountantDashboard = async (
           sessionCount: 0,
         });
       }
+
       const instrId = session.instructorId?.toString();
-      const rates = instrId ? rateMap.get(instrId) : null;
+      const instrDoc = instrId ? instructorDocMap.get(instrId) : null;
       const isConsultation = session.type === "Consultation";
-      const amount = rates ? session.hours * (isConsultation ? rates.hourlyConsultation : rates.hourlyTraining) : 0;
+
+      let amount = 0;
+      if (instrDoc) {
+        const payout = calculateSessionPayout({
+          sessionDate: new Date(session.date),
+          hours: session.hours ?? 0,
+          attendeesCount: session.attendeesCount ?? 0,
+          isConsultation,
+          isPaid: session.isPaid,
+          instructor: {
+            ratePeriods: instrDoc.ratePeriods,
+            dailyTrainingRate: instrDoc.dailyTrainingRate,
+            dailyConsultationRate: instrDoc.dailyConsultationRate,
+          },
+        });
+        amount = payout.finalAmount;
+      }
 
       const m = monthMap.get(key)!;
       m.totalHours += session.hours;
@@ -810,6 +871,145 @@ export const exportAllProfiles = async (
     );
     res.status(200).send(buf);
   } catch (error: unknown) {
+    next(error);
+  }
+}
+
+// ─── Rate Periods ─────────────────────────────────────────────────────────────
+
+export const addInstructorRatePeriod = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const role = req.user?.role;
+
+    if (role === "employee") {
+      res.status(403).json({ success: false, message: "ليس لديك صلاحية تعديل الأسعار" });
+      return;
+    }
+
+    const { error, value } = ratePeriodSchema.validate(req.body, { abortEarly: false });
+    if (error) {
+      const errors = error.details.map((d) => ({
+        field: d.path.join("."),
+        message: d.message,
+      }));
+      res.status(400).json({ success: false, message: "بيانات غير صالحة", errors });
+      return;
+    }
+
+    const instructor = await Instructor.findById(id);
+    if (!instructor) {
+      res.status(404).json({ success: false, message: "المدرب غير موجود" });
+      return;
+    }
+
+    // Call the service to add the rate period. It handles overlap checks and throws if invalid.
+    const addResult = addRatePeriod(instructor, {
+      startDate: new Date(value.startDate),
+      endDate: value.endDate ? new Date(value.endDate) : null,
+      dailyTrainingRate: value.dailyTrainingRate,
+      dailyConsultationRate: value.dailyConsultationRate,
+      createdBy: String(req.user?.id || ""),
+      createdByName: req.user?.displayName || "Admin",
+      note: value.note || "",
+    });
+
+    if (!addResult.success) {
+      res.status(400).json({ success: false, message: addResult.error });
+      return;
+    }
+
+    // Caller MUST save() after using ratePeriodService
+    await instructor.save();
+
+    await AuditLog.create({
+      action: "instructor_rates_update",
+      performedBy: req.user?.id,
+      performedByName: req.user?.displayName,
+      performedByRole: req.user?.role,
+      targetId: String(instructor._id),
+      targetName: instructor.name,
+      details: `أضاف فترة تسعير جديدة للمدرب: ${instructor.name}`,
+      ipAddress: getIp(req),
+    });
+
+    res.json({ success: true, data: instructor });
+  } catch (error: any) {
+    if (error.message && error.message.includes("تتعارض")) {
+      res.status(400).json({ success: false, message: error.message });
+      return;
+    }
+    next(error);
+  }
+};
+
+export const updateInstructorRatePeriod = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id, periodId } = req.params;
+    const role = req.user?.role;
+
+    if (role === "employee") {
+      res.status(403).json({ success: false, message: "ليس لديك صلاحية تعديل الأسعار" });
+      return;
+    }
+
+    const { error, value } = ratePeriodSchema.validate(req.body, { abortEarly: false });
+    if (error) {
+      const errors = error.details.map((d) => ({
+        field: d.path.join("."),
+        message: d.message,
+      }));
+      res.status(400).json({ success: false, message: "بيانات غير صالحة", errors });
+      return;
+    }
+
+    const instructor = await Instructor.findById(id);
+    if (!instructor) {
+      res.status(404).json({ success: false, message: "المدرب غير موجود" });
+      return;
+    }
+
+    const updateResult = updateRatePeriod(instructor, periodId as string, {
+      startDate: new Date(value.startDate),
+      endDate: value.endDate ? new Date(value.endDate) : null,
+      dailyTrainingRate: value.dailyTrainingRate,
+      dailyConsultationRate: value.dailyConsultationRate,
+      note: value.note || "",
+    });
+
+    if (!updateResult.success) {
+      res.status(400).json({ success: false, message: updateResult.error });
+      return;
+    }
+
+    // Caller MUST save() after using ratePeriodService
+    await instructor.save();
+
+    await AuditLog.create({
+      action: "instructor_rates_update",
+      performedBy: req.user?.id,
+      performedByName: req.user?.displayName,
+      performedByRole: req.user?.role,
+      targetId: String(instructor._id),
+      targetName: instructor.name,
+      details: `عَدَّل فترة تسعير للمدرب: ${instructor.name}`,
+      ipAddress: getIp(req),
+    });
+
+    res.json({ success: true, data: instructor });
+  } catch (error: any) {
+    if (error.message && error.message.includes("تتعارض")) {
+      res.status(400).json({ success: false, message: error.message });
+      return;
+    }
     next(error);
   }
 };

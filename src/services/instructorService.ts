@@ -1,6 +1,7 @@
 import { Types } from "mongoose";
 import { Instructor, IInstructor } from "../models/Instructor";
 import { TrainingSession } from "../models/TrainingSession";
+import { calculateSessionPayout } from "./payoutCalculator";
 
 // ─── Date Range ───────────────────────────────────────────────────────────────
 
@@ -180,18 +181,24 @@ export async function getInstructorDashboard(
       : 0;
 
   // 4. Compute financial data per session
-  const hourlyTrainingRate = instructor.hourlyTrainingRate;
-  const hourlyConsultationRate = instructor.hourlyConsultationRate;
-
   const sessions: InstructorSessionRow[] = rawSessions.map((s) => {
     const isConsultation = (s.programName as string) === "Consultation & Mentorship" || s.type === "Consultation";
-    let unitRate = isConsultation ? hourlyConsultationRate : hourlyTrainingRate;
-    let sessionAmount = Math.round(s.hours * unitRate * 100) / 100;
 
-    if (s.isPaid === false) {
-      unitRate = 0;
-      sessionAmount = 0;
-    }
+    const payout = calculateSessionPayout({
+      sessionDate: new Date(s.date),
+      hours: s.hours ?? 0,
+      attendeesCount: s.attendeesCount ?? 0,
+      isConsultation,
+      isPaid: s.isPaid,
+      instructor: {
+        ratePeriods: instructor.ratePeriods ?? [],
+        dailyTrainingRate: instructor.dailyTrainingRate ?? 0,
+        dailyConsultationRate: instructor.dailyConsultationRate ?? 0,
+      },
+    });
+
+    const unitRate = payout.applicableDailyRate / 7;
+    const sessionAmount = payout.finalAmount;
 
     return {
       _id: String(s._id),
@@ -207,6 +214,7 @@ export async function getInstructorDashboard(
       type: s.type,
       unitRate,
       sessionAmount,
+      attendancePercentage: payout.attendancePercentage,
       isConsultation,
       isPaid: s.isPaid ?? true,
     };
@@ -237,7 +245,7 @@ export async function getInstructorDashboard(
       program,
       hours: Math.round(data.hours * 100) / 100,
       sessions: data.sessions,
-      totalAmount: Math.round(data.totalAmount * 100) / 100,
+      totalAmount: Math.round(data.totalAmount * 1000) / 1000,
     })
   );
 
@@ -262,7 +270,7 @@ export async function getInstructorDashboard(
       type,
       hours: Math.round(data.hours * 100) / 100,
       sessions: data.sessions,
-      totalAmount: Math.round(data.totalAmount * 100) / 100,
+      totalAmount: Math.round(data.totalAmount * 1000) / 1000,
     })
   );
 
@@ -290,8 +298,8 @@ export async function getInstructorDashboard(
     programBreakdown,
     typeBreakdown,
     sessions,
-    periodTotalAmount: Math.round(periodTotalAmount * 100) / 100,
-    consultationAmount: Math.round(consultationAmount * 100) / 100,
-    trainingAmount: Math.round(trainingAmount * 100) / 100,
+    periodTotalAmount: Math.round(periodTotalAmount * 1000) / 1000,
+    consultationAmount: Math.round(consultationAmount * 1000) / 1000,
+    trainingAmount: Math.round(trainingAmount * 1000) / 1000,
   };
 }

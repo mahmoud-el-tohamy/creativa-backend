@@ -1,6 +1,21 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
 
-// ─── Interface ────────────────────────────────────────────────────────────────
+// ─── IRatePeriod Interface ────────────────────────────────────────────────────
+
+export interface IRatePeriod {
+  _id: Types.ObjectId;
+  startDate: Date;            // inclusive
+  endDate: Date | null;       // inclusive; null = currently open-ended
+  isCurrent: boolean;         // true for exactly one period at a time
+  dailyTrainingRate: number;  // min 0
+  dailyConsultationRate: number; // min 0
+  createdAt: Date;
+  createdBy: Types.ObjectId;
+  createdByName: string;
+  note: string;               // optional free text, e.g. "تعديل بعد مراجعة العقد"
+}
+
+// ─── IInstructor Interface ────────────────────────────────────────────────────
 
 export interface IInstructor extends Document {
   _id: Types.ObjectId;
@@ -14,7 +29,15 @@ export interface IInstructor extends Document {
   graduationYear: number | null;
   cvLink: string;
 
-  // Rate fields (edited by accountant or admin ONLY)
+  // Historical rate periods (new system)
+  ratePeriods: Types.DocumentArray<IRatePeriod & Document>;
+
+  // DEPRECATED: superseded by ratePeriods[]. Kept temporarily for
+  // backward-compat during migration. The CURRENT period's rates
+  // should always be kept in sync with these fields via the
+  // pre-save hook below, so any old code reading these fields
+  // directly still gets a reasonable (current) value until all 6
+  // calculation call sites are migrated to use ratePeriods.
   dailyTrainingRate: number;
   dailyConsultationRate: number;
 
@@ -29,7 +52,25 @@ export interface IInstructor extends Document {
   createdByName: string;
 }
 
-// ─── Schema ───────────────────────────────────────────────────────────────────
+// ─── RatePeriod Sub-Schema ────────────────────────────────────────────────────
+
+const RatePeriodSchema = new Schema<IRatePeriod & Document>(
+  {
+    startDate: { type: Date, required: true },
+    endDate: { type: Date, default: null },
+    isCurrent: { type: Boolean, required: true, default: false },
+    dailyTrainingRate: { type: Number, required: true, min: 0, default: 0 },
+    dailyConsultationRate: { type: Number, required: true, min: 0, default: 0 },
+    createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    createdByName: { type: String, default: "" },
+    note: { type: String, default: "" },
+  },
+  {
+    timestamps: { createdAt: true, updatedAt: false },
+  }
+);
+
+// ─── Instructor Schema ────────────────────────────────────────────────────────
 
 const instructorSchema = new Schema<IInstructor>(
   {
@@ -41,7 +82,15 @@ const instructorSchema = new Schema<IInstructor>(
     graduationYear: { type: Number, default: null },
     cvLink: { type: String, default: "" },
 
-    // Rates
+    // Historical rate periods
+    ratePeriods: { type: [RatePeriodSchema], default: [] },
+
+    // DEPRECATED: superseded by ratePeriods[]. Kept temporarily for
+    // backward-compat during migration. The CURRENT period's rates
+    // should always be kept in sync with these fields via the
+    // pre-save hook below, so any old code reading these fields
+    // directly still gets a reasonable (current) value until all 6
+    // calculation call sites are migrated to use ratePeriods.
     dailyTrainingRate: { type: Number, default: 0, min: 0 },
     dailyConsultationRate: { type: Number, default: 0, min: 0 },
 
@@ -55,6 +104,18 @@ const instructorSchema = new Schema<IInstructor>(
     toObject: { virtuals: true },
   }
 );
+
+// ─── Pre-Save Hook: sync deprecated flat fields from current rate period ──────
+
+instructorSchema.pre("save", async function () {
+  if (this.ratePeriods && this.ratePeriods.length > 0) {
+    const current = this.ratePeriods.find((p) => p.isCurrent);
+    if (current) {
+      this.dailyTrainingRate = current.dailyTrainingRate;
+      this.dailyConsultationRate = current.dailyConsultationRate;
+    }
+  }
+});
 
 // ─── Virtuals ─────────────────────────────────────────────────────────────────
 
