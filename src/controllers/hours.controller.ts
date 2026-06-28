@@ -75,6 +75,7 @@ export const listSessions = async (req: Request, res: Response, next: NextFuncti
       mode,
       type,
       search, // PERF FIX 2 — Added search
+      instructorSearch,
       page = "1",
       limit = "50",
       sort = "newest",
@@ -95,6 +96,9 @@ export const listSessions = async (req: Request, res: Response, next: NextFuncti
     // PERF FIX 2 — Implement search filter
     if (search && typeof search === "string" && search.trim()) {
       query.sessionName = { $regex: search.trim(), $options: "i" };
+    }
+    if (instructorSearch && typeof instructorSearch === "string" && instructorSearch.trim()) {
+      query.instructorName = { $regex: instructorSearch.trim(), $options: "i" };
     }
 
     let sortObj: Record<string, 1 | -1> = { date: -1 };
